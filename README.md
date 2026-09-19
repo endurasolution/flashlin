@@ -441,7 +441,9 @@ The current implementation and its limits are documented in
 before deploying. Use `--watch` for validated configuration and manual certificate
 reload, and build with `--features acme` for automatic certificates. See
 [automatic HTTPS and reload](docs/AUTOMATIC_HTTPS_AND_RELOAD.md) and the
-[benchmark suite](benchmarks/README.md). Requests/uploads are still buffered;
+[benchmark suite](benchmarks/README.md). Before enabling the opt-in
+`server.sendfile`/`server.direct_static_io` fast paths, read
+[docs/PRODUCTION.md](docs/PRODUCTION.md) — both default off. Requests/uploads are still buffered;
 independent SNI certificates, active health probes and PHP-FPM pooling remain
 pending. Real-domain ACME issuance and production comparisons still require
 deployment validation. No speed advantage over

@@ -2,6 +2,36 @@
 
 ## 2.0.0 — in progress
 
+### Zero-copy static delivery (opt-in)
+
+- Added `server.sendfile` (Linux-only, default off): a minimal HTTP/1.1
+  keep-alive loop that serves eligible plain-HTTP static GET/HEAD requests
+  with `sendfile(2)`, transferring file bytes kernel-to-socket with no
+  userspace copy. It reuses the ordinary path's security checks (path
+  containment, symlink verification, IP access, rate limiting,
+  sensitive-file blocking) rather than reimplementing them, and falls back
+  to the ordinary Hyper connection handler — with every already-read byte
+  replayed intact — for anything outside its scope: TLS, virtual hosts,
+  request bodies, `Range`, compression, rewrite rules, PHP and proxy
+  routes. See [docs/PRODUCTION.md](docs/PRODUCTION.md) before enabling it.
+- Added `server.direct_static_io` (default off): serves static files
+  recently observed to be ≤16 KiB directly on the async worker instead of
+  the blocking thread pool, skipping one executor round trip per request.
+  Larger files always keep using the blocking pool — serving them inline
+  was measured to stall other connections on the same worker thread more
+  than the handoff it saved.
+- Uncached static responses between 1 MiB and 8 MiB now complete inside the
+  single blocking job that already opened the file, instead of re-entering
+  the blocking pool once per additional 1 MiB chunk; still uses the same
+  pooled buffers as the streaming path, not a large unpooled allocation.
+- Measured on a CPU-isolated Docker/Ubuntu nginx/Apache/Flashlin harness
+  (see [benchmarks/ubuntu/](benchmarks/ubuntu/)): with `sendfile` and
+  `direct_static_io` enabled, 4 MiB static-file throughput moved from
+  roughly half of nginx/Apache to matching or exceeding both, and peak
+  memory under concurrent large-file load dropped from up to 775 MiB to
+  7.4 MiB. Small-file throughput still trails nginx at high concurrency.
+  Raw results: `benchmarks/ubuntu-results/run8/REPORT.md`.
+
 ### HTTP/1.1, HTTP/2 and optional HTTP/3
 
 - Added an opt-in `http3` build and `[http3]` UDP listener using h3 / Quinn / TLS 1.3.
@@ -50,6 +80,13 @@
 - Observability/tracing and broader integration/security test coverage.
 - Production benchmark comparisons, SBOM/dependency review and signed artifacts. Cross-platform
   regression CI has been added but has not yet run on a remote host.
+- The `server.sendfile` fast path is new: unit- and loopback-tested, and manually
+  security-reviewed for path traversal, symlink TOCTOU, header injection, request
+  smuggling, panic-reachability (this build uses `panic = "abort"`, so any reachable
+  panic is process-wide) and rate-limiter double-accounting, but not yet fuzzed,
+  soak-tested, or exercised against adversarial/slow clients. Keep it off in
+  production until that's done, or stage it behind a canary. See
+  [docs/PRODUCTION.md](docs/PRODUCTION.md).
 
 ### Delivery and capacity improvements
 

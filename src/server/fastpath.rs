@@ -79,8 +79,20 @@ mod linux {
     use crate::static_files::path_security::{canonical_root, safe_join, validate_url_path};
     use crate::static_files::redirect_rules::find_rewrite_action;
 
-    const MAX_REQUEST_HEAD: usize = 16 * 1024;
     const MAX_HEADERS: usize = 64;
+
+    /// Mirrors `connection.rs`'s own header-size clamp so this fast path
+    /// never allows a larger request head than an operator configured
+    /// `security.max_header_size` to permit, and never a smaller one than
+    /// any ordinary request needs.
+    fn max_request_head(config: &ServerConfig) -> usize {
+        config
+            .security
+            .as_ref()
+            .and_then(|security| crate::config::parse_size(&security.max_header_size))
+            .unwrap_or(32 * 1024)
+            .clamp(8 * 1024, 16 * 1024 * 1024) as usize
+    }
 
     struct Head {
         is_head: bool,
@@ -116,8 +128,9 @@ mod linux {
                 parse_duration_secs(&config.server.keep_alive_timeout).unwrap_or(75),
             );
 
+            let max_head = max_request_head(&config);
             let outcome = tokio::select! {
-                result = read_head(&mut stream, &mut buf, idle) => result?,
+                result = read_head(&mut stream, &mut buf, idle, max_head) => result?,
                 _ = shutdown.wait() => return Ok(()),
             };
 
@@ -179,6 +192,7 @@ mod linux {
         stream: &mut TcpStream,
         buf: &mut BytesMut,
         idle: Duration,
+        max_head: usize,
     ) -> io::Result<ReadOutcome> {
         loop {
             {
@@ -192,7 +206,7 @@ mod linux {
                         });
                     }
                     Ok(httparse::Status::Partial) => {
-                        if buf.len() >= MAX_REQUEST_HEAD {
+                        if buf.len() >= max_head {
                             return Ok(ReadOutcome::Fallback);
                         }
                     }
@@ -276,15 +290,6 @@ mod linux {
         if check_ip_access(&remote_addr.ip(), config).is_err() {
             return Ok(Outcome::Fallback);
         }
-        if config
-            .security
-            .as_ref()
-            .and_then(|s| s.rate_limit.as_ref())
-            .is_some()
-            && !get_rate_limiter(config, "default").check(&remote_addr.ip().to_string())
-        {
-            return Ok(Outcome::Fallback);
-        }
         if validate_url_path(&head.path).is_err() {
             return Ok(Outcome::Fallback);
         }
@@ -362,6 +367,20 @@ mod linux {
         let Some((file, meta, selected)) = resolve_file(&effective_path, &root) else {
             return Ok(Outcome::Fallback);
         };
+
+        // Checked last, immediately before committing to serve: every earlier
+        // `Fallback` return re-runs this same check in the ordinary dispatch
+        // path, and the limiter's `check` has a side effect (it consumes a
+        // token). Running it any earlier would charge some requests twice.
+        if config
+            .security
+            .as_ref()
+            .and_then(|s| s.rate_limit.as_ref())
+            .is_some()
+            && !get_rate_limiter(config, "default").check(&remote_addr.ip().to_string())
+        {
+            return Ok(Outcome::Fallback);
+        }
 
         let size = meta.len();
         let modified = meta
@@ -519,7 +538,12 @@ mod linux {
                         "sendfile returned 0 with bytes remaining",
                     ))
                 }
-                Ok(n) => remaining -= n as u64,
+                // `attempt` bounds the kernel to at most `remaining` bytes,
+                // so this never underflows in practice; `saturating_sub`
+                // keeps it that way even if that contract were ever violated,
+                // instead of wrapping to a huge value under release's
+                // unchecked arithmetic.
+                Ok(n) => remaining = remaining.saturating_sub(n as u64),
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(e) => return Err(e),
             }

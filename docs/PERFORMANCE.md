@@ -7,8 +7,22 @@ Apache without a comparable benchmark.
 
 ## Static pages and assets
 
-- Files larger than 1 MiB, or excluded by the RAM cache policy, stream with a
-  64 KiB file reader. This is a per-reader buffer, not total connection memory.
+- Uncached responses up to 8 MiB complete inside the single blocking job that
+  already opened the file, using the same pooled 1 MiB/64 KiB buffers as the
+  streaming path below — not a large unpooled allocation, which measured worse
+  under concurrency (likely `mmap`/`munmap` contention on the process-wide lock).
+  Larger transfers stream with a bounded 1 MiB per-reader buffer, not total
+  connection memory, re-entering the blocking pool once per chunk.
+- `server.direct_static_io` (opt-in, default off) skips the blocking pool
+  entirely for files recently observed to be ≤16 KiB, running the read
+  directly on the async worker. Only enable this when the document root is
+  backed by fast, OS-cached local storage — a slow read then stalls every
+  other request queued on that worker thread.
+- `server.sendfile` (opt-in, Linux-only, default off) serves eligible plain-HTTP
+  static GET/HEAD requests with `sendfile(2)`, transferring bytes kernel-to-socket
+  with no userspace copy at all. It falls back to the ordinary path for TLS,
+  virtual hosts, `Range`, compression, rewrites, PHP, proxying and anything with
+  a request body. See [docs/PRODUCTION.md](PRODUCTION.md) before enabling it.
 - Small cache entries share immutable byte buffers. The configured cache budget
   limits resident payload bytes, excluding metadata and in-flight responses.
 - File metadata is checked before cache lookup. Changed files use new keys;
@@ -108,6 +122,10 @@ Use the [reproducible benchmark suite](../benchmarks/README.md) for controlled
 Nginx/Apache comparisons. Local loopback measurements are not production results.
 The [Windows baseline report](../benchmarks/LOCAL_BASELINE.md) contains measured
 throughput, tail latency, CPU, memory and raw data for this development build.
+The [Ubuntu/Docker CPU-isolated harness](../benchmarks/ubuntu/) runs nginx,
+Apache and Flashlin under identical settings on real Linux; see
+[docs/PRODUCTION.md](PRODUCTION.md) for what its results do and don't establish
+about enabling `server.sendfile`/`server.direct_static_io` in production.
 
 The v2 release is still in development: independent SNI certificate selection,
 fully streamed uploads, PHP-FPM pooling, active health probes, broader HTTP
