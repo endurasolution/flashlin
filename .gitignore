@@ -5,6 +5,11 @@
 /benchmarks/ubuntu-results/
 /.cargo-linux-check/
 
+# Compiled deployment artifact — reproducible from source; see
+# production/README.md for the build command. Keeping it out of git avoids
+# bloating history on every rebuild.
+/production/bin/flashlin
+
 # Source/distribution archives — too large and not source-controlled content
 *.zip
 

@@ -1,0 +1,96 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FlashLin — production server.toml
+#
+# Paths in this file match the layout this package's install.sh creates:
+#   binary  -> /usr/local/bin/flashlin
+#   config  -> /etc/flashlin/server.toml   (this file)
+#   webroot -> /var/www/public
+# Adjust before deploying to a different layout.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[server]
+host = "0.0.0.0"
+port = 80
+server_name = "FlashLin"
+root = "/var/www/public"
+index = ["index.html"]
+max_connections = 4096
+read_timeout = "15s"
+write_timeout = "30s"
+keep_alive = true
+keep_alive_timeout = "30s"
+# Omit `workers` to use every available CPU core.
+# Optional per-domain virtual hosts: each *.toml file placed in this
+# directory is loaded at startup as a virtual host. Leave unset for a
+# single-site deployment. Note: the `sendfile` fast path below only
+# applies to connections with no virtual hosts configured.
+# domains_dir = "/etc/flashlin/domains"
+
+# Zero-copy static delivery — BOTH DEFAULT OFF. Read docs/PRODUCTION.md
+# before enabling either one; see that file for exactly what each flag
+# does and doesn't cover, and the pre-production checklist for turning
+# them on safely (canary rollout, soak testing, monitoring).
+#
+# direct_static_io: skips the blocking-thread-pool handoff for files
+# recently observed to be <=16 KiB, running the read directly on the
+# async worker. Only safe when `root` is fast, OS-cached local storage.
+# direct_static_io = true
+#
+# sendfile: serves eligible plain-HTTP static GET/HEAD requests with
+# zero-copy sendfile(2). Linux-only; requires no [[virtual_hosts]] /
+# domains_dir entries to be active for it to take effect on a connection.
+# sendfile = true
+
+[security]
+max_body_size = "10MB"
+max_header_size = "32KB"
+block_dotfiles = true
+block_sensitive_files = true
+hide_server_header = true
+security_headers = true
+# rate_limit = { requests_per_second = 50, burst = 100 }
+
+[cache]
+enabled = true
+max_size = "128MB"
+max_file_size = "10MB"
+ttl = "300s"
+
+[compression]
+gzip = true
+brotli = true
+min_size = 1024
+
+[logging]
+level = "warn"
+json = true
+# access_log = "/var/log/flashlin/access.log"
+# error_log  = "/var/log/flashlin/error.log"
+
+[[routes]]
+path = "/"
+root = "/var/www/public"
+index = "index.html"
+php_enabled = false
+cache_control = "no-cache" # Revalidate mutable HTML; fingerprint immutable assets separately.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TLS / HTTPS (uncomment to enable; requires the binary built with
+# --features tls, which this package's binary is: `flashlin --version`
+# lists enabled features).
+# ─────────────────────────────────────────────────────────────────────────────
+# [tls]
+# enabled = true
+# cert = "/etc/flashlin/certs/fullchain.pem"
+# key  = "/etc/flashlin/certs/privkey.pem"
+# redirect_http_to_https = true
+
+# Automatic HTTPS via ACME (Let's Encrypt) instead of a manual cert/key pair.
+# See docs/AUTOMATIC_HTTPS_AND_RELOAD.md before enabling in production —
+# staging is on by default until you flip `production = true` deliberately.
+# [tls.acme]
+# domains = ["example.com", "www.example.com"]
+# email = "admin@example.com"
+# cache_dir = "/etc/flashlin/acme"
+# production = false
+# accept_terms = true
