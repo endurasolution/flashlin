@@ -94,3 +94,21 @@ cache_control = "no-cache" # Revalidate mutable HTML; fingerprint immutable asse
 # cache_dir = "/etc/flashlin/acme"
 # production = false
 # accept_terms = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HTTP/3 over QUIC — EXPERIMENTAL (see docs/HTTP_PROTOCOLS.md). Requires:
+#   1. The binary built with --features http3 (this package's is — check
+#      with `flashlin --version`; it lists "HTTP/3 (optional listener)").
+#   2. One of [tls] or [tls.acme] above actually enabled — HTTP/3 is QUIC,
+#      which requires TLS 1.3; it cannot run without a certificate.
+#   3. Both TCP 443 AND UDP 443 reachable — install.sh already opens both
+#      (firewalld/ufw/nft/iptables), but check any cloud security group /
+#      load balancer in front of this host too; TCP-only proxies drop QUIC.
+# HTTPS responses on TCP then advertise `Alt-Svc: h3=":443"`, so clients
+# discover HTTP/3 after an initial HTTPS request — it's additive, not a
+# replacement for TCP HTTP/1.1 and HTTP/2, which keep working regardless.
+# ─────────────────────────────────────────────────────────────────────────────
+# [http3]
+# enabled = true
+# port = 443 # Omit to reuse server.port; must be the externally reachable UDP port.
+# max_concurrent_streams = 32 # Per connection, 1..=128.
