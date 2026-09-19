@@ -1,0 +1,24 @@
+# TEMPLATE: set your real domains/email and explicitly accept the CA terms.
+# Build: cargo build --release --features acme
+[server]
+host = "0.0.0.0"
+port = 443
+root = "./public"
+max_connections = 4096
+[tls]
+enabled = true
+http_port = 80
+redirect_http_to_https = true
+[tls.acme]
+domains = ["example.com", "www.example.com"]
+email = "admin@example.com"
+cache_dir = "./.flashlin/acme"
+production = false
+accept_terms = false
+[logging]
+level = "info"
+json = true
+[[routes]]
+path = "/"
+root = "./public"
+php_enabled = false

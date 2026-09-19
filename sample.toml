@@ -1,0 +1,151 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FlashLin server.toml — Example Production Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+[server]
+host         = "0.0.0.0"
+port         = 8080           # Change to 443 when TLS is enabled
+workers      = 4              # Worker threads (0 = use all CPU cores)
+server_name  = "FlashLin"
+read_timeout  = "30s"
+write_timeout = "60s"
+keep_alive         = true
+keep_alive_timeout = "75s"
+root  = "./public"
+index = ["index.html", "index.php"]
+# Maximum simultaneous connections (0 = unlimited).
+# When this limit is reached FlashLin returns HTTP 111 and closes the socket.
+max_connections = 0
+# Optional: directory of per-domain .toml files for virtual hosting.
+# All *.toml files found here are loaded at startup as virtual hosts.
+# Each domain file can override root, routes, php, tls, security, compression.
+# domains_dir = "./domains"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TLS / HTTPS  (uncomment to enable)
+# ─────────────────────────────────────────────────────────────────────────────
+# You may also place an enabled [tls] block in a file under domains_dir.
+# If global [tls] is absent, FlashLin uses the first enabled domain TLS block
+# to start the HTTPS listener.
+# If server.port is still 80 in that setup, FlashLin promotes HTTPS to 443
+# and keeps HTTP on tls.http_port.
+# [tls]
+# enabled                = true
+# cert                   = "./certs/server.crt"
+# key                    = "./certs/server.key"
+# redirect_http_to_https = false  # false = serve both HTTP and HTTPS
+# http_port              = 80     # companion HTTP port when server.port is 443
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Security  (all enabled by default)
+# ─────────────────────────────────────────────────────────────────────────────
+[security]
+max_body_size        = "20MB"
+max_header_size      = "32KB"
+hide_server_header   = true
+block_dotfiles       = true        # Block .env, .git, .htaccess, etc.
+block_sensitive_files = true       # Block *.sql, *.bak, composer.json, etc.
+security_headers     = true
+
+# Rate limiting — comment out to disable
+[security.rate_limit]
+limit = "200/min"
+burst = 50
+
+# IP allow/deny — uncomment to restrict
+# allow_ips = ["10.0.0.0/8", "192.168.0.0/16"]
+# deny_ips  = ["1.2.3.4"]
+
+# Custom Content-Security-Policy (optional)
+# csp = "default-src 'self'; img-src 'self' data:; script-src 'self'"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Compression
+# ─────────────────────────────────────────────────────────────────────────────
+[compression]
+gzip     = true
+brotli   = true
+min_size = 1024   # Don't compress responses smaller than 1 KB
+
+# ─────────────────────────────────────────────────────────────────────────────
+# In-memory response cache (static files only)
+# ─────────────────────────────────────────────────────────────────────────────
+# FlashLin caches static file responses in RAM for maximum throughput.
+# Cached responses are served without disk I/O (X-Cache: HIT).
+# PHP and proxy responses are never cached here.
+[cache]
+enabled       = true
+max_size      = "128MB"  # Total RAM for the cache
+ttl           = "300s"   # How long entries live (5 min default)
+max_file_size = "10MB"   # Skip caching files larger than this
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHP-FPM / FastCGI  (uncomment and adjust for your system)
+# ─────────────────────────────────────────────────────────────────────────────
+# [php]
+# enabled         = true
+# default_handler = "php82"
+#
+# [[php.handlers]]
+# name          = "php82"
+# mode          = "fpm"
+# socket        = "/run/php/php8.2-fpm.sock"   # Unix socket (Linux/macOS)
+# # address     = "127.0.0.1:9000"              # TCP fallback / Windows
+# document_root = "./public"
+# index         = "index.php"
+# timeout       = "30s"
+# max_body_size = "20MB"
+#
+# [[php.handlers]]
+# name          = "php83"
+# mode          = "fastcgi"
+# address       = "127.0.0.1:9001"
+# document_root = "./public"
+# index         = "index.php"
+# timeout       = "30s"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Default static site route
+[[routes]]
+path              = "/"
+root              = "./public"
+index             = "index.html"
+php_enabled       = false
+directory_listing = false
+
+# PHP application route (requires [php] section above)
+# [[routes]]
+# path        = "/"
+# root        = "./public"
+# index       = "index.php"
+# php_handler = "php82"
+# php_enabled = true
+
+# Reverse proxy — forward /api to a backend service
+# [[routes]]
+# path       = "/api"
+# proxy_pass = "http://127.0.0.1:3000"
+
+# Static assets with long-lived cache
+# [[routes]]
+# path          = "/assets"
+# root          = "./public/assets"
+# php_enabled   = false
+# cache_control = "public, max-age=31536000, immutable"
+
+# Health check endpoint (proxied)
+# [[routes]]
+# path       = "/health"
+# proxy_pass = "http://127.0.0.1:3000"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Logging
+# ─────────────────────────────────────────────────────────────────────────────
+[logging]
+level      = "info"       # error | warn | info | debug | trace
+json       = false        # Set true for structured JSON logs (recommended in prod)
+# access_log = "./logs/access.log"
+# error_log  = "./logs/error.log"

@@ -1,0 +1,56 @@
+# Run from the project root: flashlin examples/performance.toml
+# Validate without binding a port: flashlin --check examples/performance.toml
+# This is a starting profile, not a guaranteed concurrency capacity.
+[server]
+host = "127.0.0.1" # Set 0.0.0.0 when intentionally exposing the listener.
+port = 8080
+server_name = "FlashLin"
+root = "./public"
+index = ["index.html"]
+max_connections = 1024
+read_timeout = "15s"
+write_timeout = "30s"
+keep_alive = true
+keep_alive_timeout = "30s"
+# Omit workers to use available CPUs.
+
+[security]
+max_body_size = "1MB"
+max_header_size = "32KB"
+block_dotfiles = true
+block_sensitive_files = true
+hide_server_header = true
+security_headers = true
+
+[cache]
+enabled = true
+max_size = "64MB"
+max_file_size = "1MB"
+ttl = "300s"
+
+[compression]
+gzip = true
+brotli = true
+min_size = 1024
+
+[logging]
+level = "warn"
+json = true
+
+[[routes]]
+path = "/"
+root = "./public"
+index = "index.html"
+php_enabled = false
+cache_control = "no-cache" # Revalidate mutable HTML; fingerprinted assets can use immutable.
+
+# Example multi-backend proxy (enable when these services exist):
+# [[routes]]
+# path = "/api"
+# proxy_upstreams = ["http://127.0.0.1:3000", "http://127.0.0.1:3001"]
+# php_enabled = false
+
+# [[static_dirs]]
+# url_path = "/assets"
+# root = "./public/assets"
+# cache_control = "public, max-age=31536000, immutable"

@@ -1,0 +1,486 @@
+================================================================================
+  FlashLin — Linux (Ubuntu) Installation Guide
+  v2.0.0
+================================================================================
+
+  This guide covers building and configuring FlashLin from source. For a
+  prebuilt-binary install on a broader set of distros, see install_linux.sh
+  (curl -fsSL https://flashlin.com/install_linux.sh | bash).
+
+  v2.0 adds optional HTTP/3, the QUERY method, WebSocket proxying, automatic
+  HTTPS (ACME) and validated hot reload. See docs/ for full guides:
+    docs/HTTP_PROTOCOLS.md            - HTTP/1.1, HTTP/2, HTTP/3
+    docs/QUERY_AND_WEBSOCKETS.md      - QUERY method and WebSocket proxying
+    docs/AUTOMATIC_HTTPS_AND_RELOAD.md- ACME certificates and --watch
+    docs/PERFORMANCE.md               - static delivery, caching, limits
+  HTTP/3 remains experimental; no speed advantage over Nginx/Apache is claimed.
+  See latestupdates.md for the full v2.0 status and remaining work.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 1 — Install Rust
+────────────────────────────────────────────────────────────────────────────────
+
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  source ~/.cargo/env
+
+  Verify:
+  rustc --version
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 2 — Copy the project to your server
+────────────────────────────────────────────────────────────────────────────────
+
+  From Windows (PowerShell), copy the project folder to the server:
+
+    scp -r "D:\Rust Program\flashlin" user@yourserver:/opt/flashlin
+
+  Or clone from your Git repository if you have one:
+
+    git clone https://github.com/yourname/flashlin /opt/flashlin
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 3 — Build the binary
+────────────────────────────────────────────────────────────────────────────────
+
+  cd /opt/flashlin
+
+  --- Basic build (HTTP/1.1 + HTTP/2, no TLS) ---
+  cargo build --release --locked
+
+  --- With TLS/HTTPS support (HTTP/1.1 + HTTP/2 over HTTPS) ---
+  sudo apt install build-essential -y
+  cargo build --release --locked --features tls
+
+  --- All three protocols (HTTP/1.1, HTTP/2, HTTP/3), manual certificates ---
+  cargo build --release --locked --features http3
+
+  --- All three protocols, plus automatic HTTPS (Let's Encrypt) ---
+  cargo build --release --locked --features acme,http3
+
+  The compiled binary is at:
+    /opt/flashlin/target/release/flashlin
+
+  The `http3` and `acme` features are optional and additive: the default
+  build stays free of the QUIC and ACME dependencies. See
+  docs/HTTP_PROTOCOLS.md and docs/AUTOMATIC_HTTPS_AND_RELOAD.md before
+  enabling either in production.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 4 — Set up the directory structure
+────────────────────────────────────────────────────────────────────────────────
+
+  # Create required directories
+  sudo mkdir -p /var/www/public
+  sudo mkdir -p /var/www/sites
+  sudo mkdir -p /etc/flashlin/domains
+  sudo mkdir -p /etc/flashlin/certs
+
+  # Install the binary system-wide
+  sudo cp /flashlin/target/release/flashlin /usr/local/bin/flashlin
+
+  # Copy config and public files
+  sudo cp /root/flashlin/server.toml /etc/flashlin/server.toml
+  sudo cp -r /root/flashlin/public/* /var/www/public/
+  sudo cp -r /root/flashlin/domains/* /etc/flashlin/domains/
+
+  # Set file ownership
+  sudo chown -R www-data:www-data /var/www
+  sudo chown -R www-data:www-data /etc/flashlin
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 5 — Configure server.toml
+────────────────────────────────────────────────────────────────────────────────
+
+  Edit:  sudo nano /etc/flashlin/server.toml
+
+  Minimal working configuration:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ [server]                                                │
+  │ host            = "0.0.0.0"                             │
+  │ port            = 80                                    │
+  │ server_name     = "MyServer"                            │
+  │ root            = "/var/www/public"                     │
+  │ max_connections = 1000                                  │
+  │ # domains_dir   = "/etc/flashlin/domains"               │
+  │                                                         │
+  │ [security]                                              │
+  │ hide_server_header    = true                            │
+  │ block_dotfiles        = true                            │
+  │ block_sensitive_files = true                            │
+  │ security_headers      = true                            │
+  │                                                         │
+  │ [compression]                                           │
+  │ gzip     = true                                         │
+  │ brotli   = true                                         │
+  │ min_size = 1024                                         │
+  │                                                         │
+  │ [[routes]]                                              │
+  │ path = "/"                                              │
+  │ root = "/var/www/public"                                │
+  └─────────────────────────────────────────────────────────┘
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 6 — Allow firewall ports
+────────────────────────────────────────────────────────────────────────────────
+
+  sudo ufw allow 80/tcp
+  sudo ufw allow 443/tcp
+
+  NOTE: If you plan to enable HTTP/3 (STEP 11), also open UDP 443 — QUIC runs
+  over UDP, alongside TCP 443 for HTTP/1.1, HTTP/2 and the TLS handshake:
+
+    sudo ufw allow 443/udp
+
+  NOTE: If you want to run FlashLin on port 80 as a non-root user (recommended),
+  grant the binary permission to bind to low ports:
+
+    sudo setcap 'cap_net_bind_service=+ep' /usr/local/bin/flashlin
+
+  Alternatively, use port 8080 and put Nginx or a load balancer in front.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 7 — Install as a systemd service (auto-start on boot)
+────────────────────────────────────────────────────────────────────────────────
+
+  Create the service file:
+    sudo nano /etc/systemd/system/flashlin.service
+
+  Paste the following:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ [Unit]                                                  │
+  │ Description=FlashLin Web Server                         │
+  │ After=network.target                                    │
+  │                                                         │
+  │ [Service]                                               │
+  │ Type=simple                                             │
+  │ User=www-data                                           │
+  │ WorkingDirectory=/etc/flashlin                          │
+  │ ExecStart=/usr/local/bin/flashlin /etc/flashlin/server.toml │
+  │ Restart=always                                          │
+  │ RestartSec=5                                            │
+  │ Environment=RUST_LOG=info                               │
+  │                                                         │
+  │ [Install]                                               │
+  │ WantedBy=multi-user.target                              │
+  └─────────────────────────────────────────────────────────┘
+
+  Enable and start:
+    sudo systemctl daemon-reload
+    sudo systemctl enable flashlin
+    sudo systemctl start flashlin
+
+  Check status:
+    sudo systemctl status flashlin
+
+  View live logs:
+    sudo journalctl -u flashlin -f
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 8 — Virtual hosts (multiple domains)
+────────────────────────────────────────────────────────────────────────────────
+
+  1. Enable domains_dir in /etc/flashlin/server.toml:
+
+       domains_dir = "/etc/flashlin/domains"
+
+  2. Create one .toml file per domain:
+
+       sudo nano /etc/flashlin/domains/example.com.toml
+
+     Contents:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ [domain]                                                │
+  │ name       = "example.com"                              │
+  │ aliases    = ["www.example.com"]                        │
+  │ root       = "/var/www/sites/example.com"               │
+  │ index      = ["index.html", "index.php"]                │
+  │ server_name = "Example Site"                            │
+  │                                                         │
+  │ [[routes]]                                              │
+  │ path = "/"                                              │
+  │ root = "/var/www/sites/example.com"                     │
+  └─────────────────────────────────────────────────────────┘
+
+  3. Create the site directory and add content:
+
+       sudo mkdir -p /var/www/sites/example.com
+       sudo chown www-data:www-data /var/www/sites/example.com
+       echo "<h1>Hello from example.com</h1>" | sudo tee /var/www/sites/example.com/index.html
+
+  4. Restart FlashLin:
+
+       sudo systemctl restart flashlin
+
+  How it works:
+    FlashLin reads the Host: header on every request, matches it against the
+    name/aliases in each domain file, and routes accordingly. Domains not
+    matched fall through to the global server.toml settings.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 9 — TLS / HTTPS with Let's Encrypt (free certificate)
+────────────────────────────────────────────────────────────────────────────────
+
+  Install certbot and obtain a certificate:
+
+    sudo apt install certbot -y
+
+    # Stop FlashLin temporarily so certbot can use port 80
+    sudo systemctl stop flashlin
+    sudo certbot certonly --standalone -d example.com -d www.example.com
+    sudo systemctl start flashlin
+
+  Certificates are saved to:
+    /etc/letsencrypt/live/example.com/fullchain.pem
+    /etc/letsencrypt/live/example.com/privkey.pem
+
+  Add TLS to the domain file  (/etc/flashlin/domains/example.com.toml):
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ [domain]                                                │
+  │ name    = "example.com"                                 │
+  │ aliases = ["www.example.com"]                           │
+  │ root    = "/var/www/sites/example.com"                  │
+  │                                                         │
+  │ [tls]                                                   │
+  │ enabled = true                                          │
+  │ cert    = "/etc/letsencrypt/live/example.com/fullchain.pem" │
+  │ key     = "/etc/letsencrypt/live/example.com/privkey.pem"   │
+  │                                                         │
+  │ [[routes]]                                              │
+  │ path = "/"                                              │
+  │ root = "/var/www/sites/example.com"                     │
+  └─────────────────────────────────────────────────────────┘
+
+  Change the port in server.toml:
+    port = 443
+
+  Restart:
+    sudo systemctl restart flashlin
+
+  Auto-renew (certbot renews automatically, but you need to reload FlashLin):
+    sudo crontab -e
+    # Add this line:
+    0 3 * * * certbot renew --quiet && systemctl restart flashlin
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 10 — PHP-FPM support (optional)
+────────────────────────────────────────────────────────────────────────────────
+
+  Install PHP-FPM:
+    sudo apt install php8.2-fpm -y
+    sudo systemctl start php8.2-fpm
+    sudo systemctl enable php8.2-fpm
+
+  Verify the socket exists:
+    ls /run/php/php8.2-fpm.sock
+
+  Add PHP config to server.toml or a domain toml:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ [php]                                                   │
+  │ enabled         = true                                  │
+  │ default_handler = "php82"                               │
+  │                                                         │
+  │ [[php.handlers]]                                        │
+  │ name          = "php82"                                 │
+  │ mode          = "fpm"                                   │
+  │ socket        = "/run/php/php8.2-fpm.sock"              │
+  │ document_root = "/var/www/public"                       │
+  │ index         = "index.php"                             │
+  │ timeout       = "30s"                                   │
+  │                                                         │
+  │ [[routes]]                                              │
+  │ path        = "/"                                       │
+  │ root        = "/var/www/public"                         │
+  │ php_handler = "php82"                                   │
+  │ php_enabled = true                                      │
+  └─────────────────────────────────────────────────────────┘
+
+  Restart FlashLin after changes:
+    sudo systemctl restart flashlin
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 11 — HTTP/3 over QUIC (optional, experimental)
+────────────────────────────────────────────────────────────────────────────────
+
+  Build with the http3 feature (STEP 3) and open UDP 443 (STEP 6). HTTP/3
+  needs TLS certificates and reuses the same TCP 443 for HTTP/1.1/HTTP/2.
+
+  Add to the domain or server.toml TLS block:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ [http3]                                                 │
+  │ enabled                = true                           │
+  │ port                   = 443                            │
+  │ max_concurrent_streams = 32                              │
+  └─────────────────────────────────────────────────────────┘
+
+  Restart FlashLin. HTTPS responses on TCP advertise the HTTP/3 port via
+  Alt-Svc; capable clients upgrade to QUIC automatically.
+
+  HTTP/3 is disabled unless explicitly enabled here AND built with the http3
+  feature. 0-RTT, active address migration, WebTransport and HTTP datagrams
+  are not implemented. See docs/HTTP_PROTOCOLS.md and examples/http3.toml.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 12 — Automatic HTTPS with ACME / Let's Encrypt (optional)
+────────────────────────────────────────────────────────────────────────────────
+
+  Alternative to the certbot flow in STEP 9: FlashLin can request, cache and
+  renew Let's Encrypt certificates itself. Build with the acme feature
+  (STEP 3).
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ [tls]                                                    │
+  │ enabled = true                                           │
+  │ http_port = 80                                            │
+  │ redirect_http_to_https = true                             │
+  │                                                            │
+  │ [tls.acme]                                                │
+  │ domains      = ["example.com", "www.example.com"]        │
+  │ email        = "admin@example.com"                       │
+  │ cache_dir    = "/etc/flashlin/acme"                       │
+  │ production   = false                                      │
+  │ accept_terms = false                                       │
+  └─────────────────────────────────────────────────────────┘
+
+  sudo mkdir -p /etc/flashlin/acme
+  sudo chmod 700 /etc/flashlin/acme
+
+  Read https://letsencrypt.org/repository/ before setting accept_terms = true.
+  Keep production = false (staging) until issuance works, then switch to true
+  for browser-trusted certificates. All configured domains must resolve to
+  this server on public TCP 443 for TLS-ALPN-01 validation — a proxy/CDN in
+  front must not intercept it. Manual certs and ACME are mutually exclusive.
+
+  cache_dir must stay outside every served document root and private (mode
+  0700) — it holds certificate and account private keys. Fresh public
+  issuance/renewal still requires real-domain validation; see
+  docs/AUTOMATIC_HTTPS_AND_RELOAD.md.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 13 — Hot config reload (optional)
+────────────────────────────────────────────────────────────────────────────────
+
+  Validate a config without starting the server:
+    flashlin --check /etc/flashlin/server.toml
+
+  Run with hot reload instead of a plain start — checks for changes every
+  two seconds and applies a full valid generation without dropping
+  connections:
+    sudo flashlin --watch /etc/flashlin/server.toml
+
+  To use --watch under systemd, add it to ExecStart in the service file
+  (STEP 7) and reload:
+    sudo systemctl daemon-reload
+    sudo systemctl restart flashlin
+
+  Listener address/port, HTTP/3, worker count, max connections, logging and
+  ACME settings require a full restart — invalid configs and mismatched
+  certificate/key updates keep the previous generation running. See
+  docs/AUTOMATIC_HTTPS_AND_RELOAD.md.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STEP 14 — WebSocket and QUERY proxying to a backend (optional)
+────────────────────────────────────────────────────────────────────────────────
+
+  FlashLin forwards WebSocket upgrades and the HTTP QUERY method to an
+  upstream application; it does not implement the handshake, message
+  processing or a query language itself.
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ [[routes]]                                                │
+  │ path       = "/api/"                                      │
+  │ proxy_pass = "http://127.0.0.1:3000"                      │
+  │ methods    = ["QUERY", "GET", "OPTIONS"]                   │
+  └─────────────────────────────────────────────────────────┘
+
+  See docs/QUERY_AND_WEBSOCKETS.md and examples/query-websocket.toml for
+  upstream group failover, QUERY body/content-type limits and CORS behavior.
+
+
+────────────────────────────────────────────────────────────────────────────────
+USEFUL COMMANDS
+────────────────────────────────────────────────────────────────────────────────
+
+  Start / Stop / Restart:
+    sudo systemctl start flashlin
+    sudo systemctl stop flashlin
+    sudo systemctl restart flashlin
+
+  View status:
+    sudo systemctl status flashlin
+
+  Live logs:
+    sudo journalctl -u flashlin -f
+
+  Verbose debug logs:
+    sudo RUST_LOG=debug /usr/local/bin/flashlin /etc/flashlin/server.toml
+
+  Test the server locally:
+    curl -I http://localhost
+    curl -H "Host: example.com" http://localhost
+
+  Check which process is using port 80:
+    sudo ss -tlnp | grep :80
+
+  Check which process is using UDP 443 (HTTP/3):
+    sudo ss -ulnp | grep :443
+
+  Validate config without starting:
+    flashlin --check /etc/flashlin/server.toml
+
+  Prometheus metrics (loopback only):
+    curl http://127.0.0.1:PORT/metrics
+
+  Rebuild and redeploy after code changes:
+    cd /opt/flashlin
+    cargo build --release --locked --features acme,http3
+    sudo cp target/release/flashlin /usr/local/bin/flashlin
+    sudo systemctl restart flashlin
+
+
+────────────────────────────────────────────────────────────────────────────────
+TROUBLESHOOTING
+────────────────────────────────────────────────────────────────────────────────
+
+  Permission denied on port 80:
+    sudo setcap 'cap_net_bind_service=+ep' /usr/local/bin/flashlin
+
+  Address already in use:
+    sudo ss -tlnp | grep :80
+    sudo systemctl stop nginx    # if Nginx is running on the same port
+
+  FlashLin starts but returns 404 for everything:
+    Check that `root` in server.toml points to an existing directory with files.
+
+  TLS certificate errors:
+    Ensure cert and key paths are readable by the www-data user:
+      sudo chmod 640 /etc/letsencrypt/live/example.com/privkey.pem
+      sudo chgrp www-data /etc/letsencrypt/live/example.com/privkey.pem
+
+  PHP not executing (showing raw PHP source):
+    Verify PHP-FPM is running:  sudo systemctl status php8.2-fpm
+    Verify the socket exists:   ls -la /run/php/php8.2-fpm.sock
+
+
+================================================================================
+  End of Installation Guide
+================================================================================

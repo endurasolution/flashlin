@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FlashLin — Docker server.toml  (static site / reverse proxy)
+# ─────────────────────────────────────────────────────────────────────────────
+
+[server]
+host         = "0.0.0.0"
+port         = 80             # Change to 443 when TLS is enabled
+server_name  = "FlashLin"
+read_timeout  = "30s"
+write_timeout = "60s"
+keep_alive         = true
+keep_alive_timeout = "75s"
+root  = "/var/www/html"
+index = ["index.html"]
+max_connections = 0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TLS / HTTPS
+#
+# How to enable:
+#   1. Mount your certificates:
+#        volumes:
+#          - ./certs:/etc/flashlin/certs:ro
+#   2. Uncomment the [tls] block below
+#   3. Change server.port to 443
+#   4. Restart the container
+# ─────────────────────────────────────────────────────────────────────────────
+# [tls]
+# enabled                = true
+# cert                   = "/etc/flashlin/certs/fullchain.pem"
+# key                    = "/etc/flashlin/certs/privkey.pem"
+# redirect_http_to_https = true   # HTTP on port 80 auto-redirects to HTTPS
+# http_port              = 80     # Companion HTTP listener (for the redirect)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Security
+# ─────────────────────────────────────────────────────────────────────────────
+[security]
+max_body_size        = "20MB"
+max_header_size      = "32KB"
+hide_server_header   = true
+block_dotfiles       = true
+block_sensitive_files = true
+security_headers     = true
+
+[security.rate_limit]
+limit = "200/min"
+burst = 50
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Compression
+# ─────────────────────────────────────────────────────────────────────────────
+[compression]
+gzip     = true
+brotli   = true
+min_size = 1024
+
+# ─────────────────────────────────────────────────────────────────────────────
+# In-memory response cache
+# ─────────────────────────────────────────────────────────────────────────────
+[cache]
+enabled       = true
+max_size      = "128MB"
+ttl           = "300s"
+max_file_size = "10MB"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes
+# ─────────────────────────────────────────────────────────────────────────────
+[[routes]]
+path              = "/"
+root              = "/var/www/html"
+index             = "index.html"
+php_enabled       = false
+directory_listing = false
+
+# Reverse proxy example — uncomment to forward /api to a backend
+# [[routes]]
+# path       = "/api"
+# proxy_pass = "http://backend:3000"
+
+# Static assets with long cache
+# [[routes]]
+# path          = "/assets"
+# root          = "/var/www/html/assets"
+# cache_control = "public, max-age=31536000, immutable"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Logging — JSON format recommended in containers
+# ─────────────────────────────────────────────────────────────────────────────
+[logging]
+level = "info"
+json  = true

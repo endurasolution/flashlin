@@ -1,0 +1,40 @@
+# Build: cargo build --release --locked --features http3
+# Supply real certificate/key files outside ./public before running --check.
+# Open TCP 443 AND UDP 443. All three protocols share one HTTPS origin.
+[server]
+host = "0.0.0.0"
+port = 443
+root = "./public"
+index = ["index.html"]
+read_timeout = "15s"
+write_timeout = "60s"
+keep_alive_timeout = "60s"
+max_connections = 256
+
+[tls]
+enabled = true
+cert = "./certs/fullchain.pem"
+key = "./certs/privkey.pem"
+http_port = 443 # same as server.port: no extra plaintext listener
+
+[http3]
+enabled = true
+port = 443
+max_concurrent_streams = 32
+
+[security]
+max_body_size = "1MB"
+max_header_size = "32KB"
+block_dotfiles = true
+block_sensitive_files = true
+hide_server_header = true
+security_headers = true
+
+[compression]
+gzip = true
+brotli = true
+min_size = 1024
+
+[logging]
+level = "info"
+json = true

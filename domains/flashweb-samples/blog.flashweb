@@ -1,0 +1,50 @@
+# .flashweb — Blog / CMS (pretty URL rewrites)
+#
+# Place in your web root directory.
+# Rewrites clean URLs like /blog/my-post to /index.php?slug=my-post
+# without showing the rewrite in the browser address bar.
+
+# ─── Pretty URL rewrites ──────────────────────────────────────────────────────
+
+[[rewrite]]
+from = "/blog/*"
+to   = "/index.php"
+last = true
+
+[[rewrite]]
+from = "/category/*"
+to   = "/index.php"
+last = true
+
+[[rewrite]]
+from = "/tag/*"
+to   = "/index.php"
+last = true
+
+# ─── Redirect old URLs permanently ───────────────────────────────────────────
+
+[[redirect]]
+from = "/articles/*"
+to   = "/blog/"
+code = 301
+
+[[redirect]]
+from = "/feed"
+to   = "/rss.xml"
+code = 301
+
+# ─── Security headers ─────────────────────────────────────────────────────────
+
+[[header]]
+name  = "X-Content-Type-Options"
+value = "nosniff"
+
+[[header]]
+name  = "Referrer-Policy"
+value = "strict-origin-when-cross-origin"
+
+# ─── Cache: HTML pages expire quickly, let browser revalidate ─────────────────
+
+[cache]
+max_age         = 300      # 5 minutes
+must_revalidate = true

@@ -1,0 +1,54 @@
+# .flashweb — WordPress / Laravel / any PHP app
+#
+# Place in your web root directory.
+# Routes all requests through index.php (the front controller pattern).
+# Works for WordPress, Laravel, Symfony, CodeIgniter, etc.
+
+# ─── Front-controller rewrite ─────────────────────────────────────────────────
+# All paths that are not real files get routed through index.php.
+# FlashLin checks whether the file exists on disk before applying rewrites,
+# so actual files (images, CSS, JS) are served directly without hitting PHP.
+
+[[rewrite]]
+from = "/*"
+to   = "/index.php"
+last = true
+
+# ─── Common WordPress redirects ───────────────────────────────────────────────
+
+[[redirect]]
+from = "/wp-admin"
+to   = "/wp-admin/"
+code = 301
+
+# Block xmlrpc.php (common attack vector) — redirect to 403 page
+# [[redirect]]
+# from = "/xmlrpc.php"
+# to   = "/403.html"
+# code = 301
+
+# ─── Security headers ─────────────────────────────────────────────────────────
+
+[[header]]
+name  = "X-Content-Type-Options"
+value = "nosniff"
+
+[[header]]
+name  = "X-Frame-Options"
+value = "SAMEORIGIN"
+
+[[header]]
+name  = "Referrer-Policy"
+value = "strict-origin-when-cross-origin"
+
+# ─── Block access to sensitive WordPress paths ────────────────────────────────
+# (FlashLin already blocks dotfiles; add extra deny for wp-config backup files)
+
+[access]
+deny = []    # add specific IPs to block here
+
+# ─── No caching for PHP responses ─────────────────────────────────────────────
+
+[cache]
+no_store = true
+no_cache = true

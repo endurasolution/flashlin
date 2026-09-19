@@ -1,0 +1,35 @@
+services:
+  flashlin:
+    image: ${IMAGE:-flashlin:latest}
+    build:
+      context: ..
+      dockerfile: dockerflashlin/Dockerfile
+    container_name: flashlin
+    ports:
+      - "80:80"
+    volumes:
+      - ./config/server.php.toml:/etc/flashlin/server.toml:ro
+      - ${WEBROOT:-./public}:/var/www/html:ro
+      - flashlin-logs:/var/log/flashlin
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - FLASHLIN_CONFIG=/etc/flashlin/server.toml
+    depends_on:
+      - php-fpm
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  php-fpm:
+    image: php:8.2-fpm-alpine
+    container_name: php-fpm
+    volumes:
+      - ${WEBROOT:-./public}:/var/www/html:ro
+    restart: unless-stopped
+
+volumes:
+  flashlin-logs:

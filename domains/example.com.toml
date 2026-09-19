@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FlashLin virtual host — example.com
+# Place this file in the directory pointed to by server.toml `domains_dir`.
+# Settings here override the global server.toml for requests whose Host header
+# matches `domain.name` or any entry in `domain.aliases`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[domain]
+name         = "example.com"
+aliases      = ["www.example.com"]
+root         = "./sites/example.com/public"
+index        = ["index.html", "index.php"]
+server_name  = "Example Site"   # shown in error pages; defaults to `name`
+
+# ─── TLS (per-domain certificate) ───────────────────────────────────────────
+# Uncomment to enable HTTPS for this domain only.
+# [tls]
+# enabled = true
+# cert    = "./certs/example.com.crt"
+# key     = "./certs/example.com.key"
+
+# ─── Routes ──────────────────────────────────────────────────────────────────
+[[routes]]
+path  = "/"
+root  = "./sites/example.com/public"
+index = "index.html"
+
+# ─── Reverse proxy example ───────────────────────────────────────────────────
+# [[routes]]
+# path       = "/api"
+# proxy_pass = "http://127.0.0.1:3001"
+
+# ─── PHP (override global PHP config for this domain) ────────────────────────
+# [php]
+# enabled         = true
+# default_handler = "php82"
+#
+# [[php.handlers]]
+# name          = "php82"
+# mode          = "fpm"
+# socket        = "/run/php/php8.2-fpm.sock"
+# document_root = "./sites/example.com/public"
+# timeout       = "30s"
+
+# ─── Security overrides (optional; inherits global if omitted) ───────────────
+# [security]
+# max_body_size = "5MB"
+# rate_limit    = { limit = "200/min", burst = 20 }
+
+# ─── Compression (optional; inherits global if omitted) ──────────────────────
+# [compression]
+# gzip   = true
+# brotli = true

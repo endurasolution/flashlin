@@ -1,0 +1,111 @@
+[package]
+name = "flashlin"
+version = "2.0.0"
+edition = "2021"
+description = "FlashLin — Fast, reliable, cached, powerful Rust web server"
+license-file = "license.flashlin"
+readme = "README.md"
+
+[features]
+default = []
+# Enable TLS/HTTPS support (requires a C compiler for the ring crate)
+tls = ["dep:rustls", "dep:tokio-rustls", "dep:rustls-pemfile", "dep:hyper-rustls"]
+acme = ["tls", "dep:rustls-acme"]
+http3 = ["tls", "dep:quinn", "dep:h3", "dep:h3-quinn"]
+
+[[bin]]
+name = "flashlin"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP/1.1 + HTTP/2
+hyper = { version = "1", features = ["http1", "http2", "server", "client"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2", "client-legacy"] }
+http-body-util = "0.1"
+# Optional HTTP/3 over QUIC; TCP HTTP/1.1 and HTTP/2 remain available.
+quinn = { version = "0.11", optional = true, default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+h3 = { version = "0.0.8", optional = true }
+h3-quinn = { version = "0.0.10", optional = true, default-features = false }
+
+# TLS (optional — enable with --features tls)
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std"] }
+tokio-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring"] }
+rustls-pemfile = { version = "2", optional = true }
+rustls-acme = { version = "0.15.4", optional = true, default-features = false, features = ["ring", "webpki-roots", "tokio"] }
+hyper-rustls = { version = "0.27", optional = true, default-features = false, features = ["ring", "http1", "http2", "webpki-roots", "tls12"] }
+
+# Serialization / Configuration
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Logging / Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+
+# MIME type detection
+mime_guess = "2"
+mime = "0.3"
+
+# Compression
+flate2 = "1"
+brotli = "3"
+
+# Byte buffers
+bytes = "1"
+tokio-util = { version = "0.7", features = ["io", "codec"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# HTTP types
+http = "1"
+
+# Minimal HTTP/1.1 request-line/header parsing for the sendfile fast path
+httparse = "1"
+
+# Raw sendfile(2) syscall for the zero-copy static-file fast path (Linux only)
+libc = "0.2"
+
+# URL / percent encoding
+percent-encoding = "2"
+
+# Advanced socket options
+socket2 = { version = "0.5", features = ["all"] }
+
+# Request IDs
+uuid = { version = "1", features = ["v4"] }
+
+# Futures
+futures-util = "0.3"
+
+# Time / dates
+chrono = { version = "0.4", features = ["serde"] }
+
+# ETag hashing
+sha2 = "0.10"
+hex = "0.4"
+
+# Hot-swappable Arc pointer (config reload)
+arc-swap = "1"
+
+# Concurrent hash map for rate limiting
+dashmap = "5"
+
+# HTTP date parsing/formatting (ETag / Last-Modified / If-Modified-Since)
+httpdate = "1"
+
+[dev-dependencies]
+tokio-test = "0.4"
+rcgen = "0.13"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

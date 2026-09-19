@@ -1,0 +1,33 @@
+[server]
+host = "127.0.0.1"
+port = 18080
+workers = 2
+root = "/srv/bench"
+keep_alive = true
+keep_alive_timeout = "30s"
+max_connections = 4096
+# Benchmark fixtures are warmed into the OS page cache before measurement
+# (README.md), so a synchronous read never blocks on real disk I/O here.
+direct_static_io = true
+# Single-host, plain HTTP, GET-only static traffic: exactly what the
+# zero-copy sendfile fast path covers.
+sendfile = true
+
+[cache]
+enabled = false
+max_size = "128MB"
+max_file_size = "10MB"
+ttl = "300s"
+
+[compression]
+gzip = false
+brotli = false
+
+[logging]
+level = "error"
+json = true
+
+[[routes]]
+path = "/"
+root = "/srv/bench"
+php_enabled = false

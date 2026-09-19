@@ -1,0 +1,29 @@
+# Rust build output
+/target/
+/.flashlin/
+/benchmarks/results/
+/benchmarks/ubuntu-results/
+/.cargo-linux-check/
+
+# Source/distribution archives — too large and not source-controlled content
+*.zip
+
+# Separate project with its own git history — not a submodule of this repo
+/websiteforflashlin/
+
+# TLS certificates — never commit private keys
+dockerflashlin/certs/*.pem
+dockerflashlin/certs/*.crt
+dockerflashlin/certs/*.key
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

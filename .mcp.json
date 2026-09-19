@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mcpforssh": {
+      "command": "E:\\mcpforssh\\target\\release\\mcpforssh-mcp.exe",
+      "args": []
+    }
+  }
+}

@@ -1,0 +1,71 @@
+name: Build & Publish Docker Image
+
+on:
+  push:
+    tags:
+      - "v*"           # trigger on version tags: v1.0.0, v0.4.1, etc.
+  workflow_dispatch:   # allow manual trigger from GitHub UI
+
+env:
+  DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/flashlin
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/flashlin
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # required for ghcr.io
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # ── Docker metadata (tags + labels) ──────────────────────────────────
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}        # e.g. 0.4.0
+            type=semver,pattern={{major}}.{{minor}} # e.g. 0.4
+            type=semver,pattern={{major}}           # e.g. 0  (skip if major=0)
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      # ── QEMU + Buildx for multi-arch builds ──────────────────────────────
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Login to Docker Hub ───────────────────────────────────────────────
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ── Login to GitHub Container Registry ───────────────────────────────
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Build & push (linux/amd64 + linux/arm64) ─────────────────────────
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: dockerflashlin/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

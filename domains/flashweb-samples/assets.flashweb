@@ -1,0 +1,32 @@
+# .flashweb — Static assets (CSS, JS, images, fonts)
+#
+# Place in your /assets or /static directory.
+# Sets aggressive long-lived caching for fingerprinted/versioned files.
+# Files should be served with content-hashed names (e.g. app.a3f92b.js).
+
+# ─── Immutable long-lived cache (1 year) ─────────────────────────────────────
+
+[cache]
+max_age = 31536000    # 365 days
+
+# ─── CORS for fonts (required by browsers) ────────────────────────────────────
+
+[cors]
+origin  = "*"
+methods = ["GET", "HEAD", "OPTIONS"]
+headers = ["Range"]
+
+# ─── Headers ──────────────────────────────────────────────────────────────────
+
+[[header]]
+name  = "Cache-Control"
+value = "public, max-age=31536000, immutable"
+
+# Timing-Allow-Origin lets analytics tools measure resource load times
+[[header]]
+name  = "Timing-Allow-Origin"
+value = "*"
+
+# ─── Block directory listing ──────────────────────────────────────────────────
+# (directory_listing is false by default, this is a reminder)
+# directory_listing = false  # set in server.toml route config

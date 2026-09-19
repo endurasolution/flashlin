@@ -1,0 +1,35 @@
+# .flashweb — REST API endpoint
+#
+# Place in your /api directory (e.g. public/api/.flashweb).
+# Enables CORS for cross-origin frontend apps and locks down the API path.
+
+# ─── CORS — allow any origin to call this API ─────────────────────────────────
+
+[cors]
+origin      = "*"
+methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+headers     = ["Content-Type", "Authorization", "X-Requested-With"]
+credentials = false
+max_age     = 86400          # preflight cached for 24 h
+
+# ─── Response headers ─────────────────────────────────────────────────────────
+
+[[header]]
+name  = "X-Content-Type-Options"
+value = "nosniff"
+
+[[header]]
+name  = "X-Robots-Tag"
+value = "noindex, nofollow"  # keep API out of search engines
+
+# ─── Never cache API responses ────────────────────────────────────────────────
+
+[cache]
+no_store = true
+no_cache = true
+
+# ─── Restrict access to internal network only (uncomment to enable) ───────────
+
+# [access]
+# allow = ["10.0.0.0/8", "192.168.0.0/16", "127.0.0.1"]
+# deny  = ["0.0.0.0/0"]

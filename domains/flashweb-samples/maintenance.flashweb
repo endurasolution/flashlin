@@ -1,0 +1,36 @@
+# .flashweb — Maintenance mode
+#
+# Place in your web root when the site is down for maintenance.
+# Redirects all traffic to a static maintenance page.
+# Allow specific IPs (your office/VPN) to bypass and see the real site.
+
+# ─── Redirect all visitors to the maintenance page ────────────────────────────
+
+[[redirect]]
+from = "/*"
+to   = "/maintenance.html"
+code = 302    # 302 temporary — do NOT use 301 (browsers cache it permanently)
+
+# ─── Let your own IP through (comment out the redirect above first) ───────────
+# When you're ready to test: comment out the [[redirect]] block above,
+# uncomment [access] below, and only your IP can reach the site.
+
+# [access]
+# allow = ["203.0.113.10"]   # your office / VPN IP
+# deny  = ["0.0.0.0/0"]
+
+# ─── Tell search engines to come back later ───────────────────────────────────
+
+[[header]]
+name  = "Retry-After"
+value = "3600"    # suggest retry in 1 hour
+
+[[header]]
+name  = "X-Robots-Tag"
+value = "noindex"
+
+# ─── No caching — maintenance page must always be fresh ──────────────────────
+
+[cache]
+no_store = true
+no_cache = true

@@ -1,0 +1,23 @@
+name: Sync README to Docker Hub
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - README.md        # only runs when README changes
+
+jobs:
+  push-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Push README to Docker Hub
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: endurasolution/flashlin
+          readme-filepath: ./README.md

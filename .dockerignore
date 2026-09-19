@@ -1,0 +1,10 @@
+target/
+.git/
+.flashlin/
+.env
+.env.*
+benchmarks/results/
+**/*.key
+**/*.pem
+**/*.pfx
+**/*.p12

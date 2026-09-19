@@ -1,0 +1,6 @@
+# Place your TLS certificates here:
+#   fullchain.pem   — certificate + intermediate chain
+#   privkey.pem     — private key
+#
+# See README.md → SSL / TLS setup for instructions.
+# Do NOT commit actual certificate files to version control.

@@ -1,0 +1,24 @@
+# Separate cache-enabled profile. Do not merge these results with the uncached baseline.
+[server]
+host = "127.0.0.1"
+port = 18082
+workers = 2
+root = "./target/benchmark-fixture"
+keep_alive = true
+keep_alive_timeout = "30s"
+max_connections = 4096
+[cache]
+enabled = true
+max_size = "128MB"
+max_file_size = "10MB"
+ttl = "300s"
+[compression]
+gzip = false
+brotli = false
+[logging]
+level = "error"
+json = true
+[[routes]]
+path = "/"
+root = "./target/benchmark-fixture"
+php_enabled = false

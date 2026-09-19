@@ -1,0 +1,28 @@
+services:
+  flashlin:
+    image: ${IMAGE:-flashlin:latest}
+    build:
+      context: ..
+      dockerfile: dockerflashlin/Dockerfile
+    container_name: flashlin
+    ports:
+      - "80:80"       # HTTP → auto-redirects to HTTPS
+      - "443:443"     # HTTPS
+    volumes:
+      - ./config/server.tls.toml:/etc/flashlin/server.toml:ro
+      - ${WEBROOT:-./public}:/var/www/html:ro
+      - ./certs:/etc/flashlin/certs:ro
+      - flashlin-logs:/var/log/flashlin
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - FLASHLIN_CONFIG=/etc/flashlin/server.toml
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sfk", "https://localhost:443/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  flashlin-logs:

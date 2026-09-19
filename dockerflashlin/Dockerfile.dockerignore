@@ -1,0 +1,12 @@
+target/
+.git/
+*.log
+*.lock.bak
+.flashlin/
+.env
+.env.*
+benchmarks/results/
+**/*.key
+**/*.pem
+**/*.pfx
+**/*.p12

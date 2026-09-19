@@ -1,0 +1,31 @@
+services:
+  flashlin:
+    # Pull from Docker Hub (public release):
+    #   IMAGE=yourdockerhubuser/flashlin docker compose up -d
+    #
+    # Build from source (development):
+    #   docker compose up -d   (uses build: below)
+    image: ${IMAGE:-flashlin:latest}
+    build:
+      context: ..
+      dockerfile: dockerflashlin/Dockerfile
+    container_name: flashlin
+    ports:
+      - "80:80"
+    volumes:
+      - ./config/server.toml:/etc/flashlin/server.toml:ro
+      - ${WEBROOT:-./public}:/var/www/html:ro
+      - flashlin-logs:/var/log/flashlin
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - FLASHLIN_CONFIG=/etc/flashlin/server.toml
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  flashlin-logs:

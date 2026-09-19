@@ -1,0 +1,34 @@
+# ─── FlashLin — Pre-built binary via official install script ─────────────────
+# Build context must be the dockerflashlin/ directory:
+#   cd dockerflashlin
+#   docker build -f Dockerfile.prebuilt -t flashlin .
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install the official FlashLin binary
+RUN curl -fsSL https://flashlin.com/install_linux.sh | bash \
+    && rm -rf /tmp/*
+
+RUN useradd -r -u 1001 -g 0 -s /bin/false -d /var/www flashlin \
+    && mkdir -p /var/www/html /etc/flashlin /var/log/flashlin \
+    && chown -R 1001:0 /var/www/html /var/log/flashlin
+
+COPY config/server.toml /etc/flashlin/server.toml
+COPY public/             /var/www/html/
+COPY entrypoint.sh       /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 80 443
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -sf http://localhost:80/ > /dev/null || exit 1
+
+USER 1001
+
+ENTRYPOINT ["/entrypoint.sh"]

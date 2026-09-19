@@ -1,0 +1,44 @@
+# .flashweb — Admin panel / dashboard (IP-restricted)
+#
+# Place in your /admin directory (e.g. public/admin/.flashweb).
+# Locks the admin area to a specific IP range and adds strict security headers.
+
+# ─── IP allowlist — only your office or VPN can reach /admin ─────────────────
+
+[access]
+allow = ["192.168.0.0/16", "10.0.0.0/8", "127.0.0.1"]
+# deny everyone else automatically when allow list is set
+
+# ─── Strict security headers ──────────────────────────────────────────────────
+
+[[header]]
+name  = "X-Frame-Options"
+value = "DENY"
+
+[[header]]
+name  = "X-Content-Type-Options"
+value = "nosniff"
+
+[[header]]
+name  = "Referrer-Policy"
+value = "no-referrer"
+
+[[header]]
+name  = "Content-Security-Policy"
+value = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+
+[[header]]
+name  = "Permissions-Policy"
+value = "geolocation=(), microphone=(), camera=(), payment=()"
+
+# ─── No caching for admin pages ───────────────────────────────────────────────
+
+[cache]
+no_store = true
+no_cache = true
+
+# ─── HTTPS-only hint (browser enforces after first visit) ─────────────────────
+
+[[header]]
+name  = "Strict-Transport-Security"
+value = "max-age=63072000; includeSubDomains"

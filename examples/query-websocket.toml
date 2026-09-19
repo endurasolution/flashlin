@@ -1,0 +1,25 @@
+# Run your QUERY/WebSocket application on port 3000 first.
+# Validate with: flashlin --check examples/query-websocket.toml
+[server]
+host = "127.0.0.1"
+port = 8080
+root = "./public"
+read_timeout = "15s"
+keep_alive_timeout = "60s"
+max_connections = 1024
+
+[security]
+max_body_size = "1MB"
+max_header_size = "32KB"
+
+[[routes]]
+path = "/search"
+proxy_pass = "http://127.0.0.1:3000"
+methods = ["QUERY", "OPTIONS"]
+php_enabled = false
+
+[[routes]]
+path = "/socket"
+proxy_pass = "http://127.0.0.1:3000"
+methods = ["GET"]
+php_enabled = false
