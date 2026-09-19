@@ -186,8 +186,15 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+if [[ -f "$HERE/bin/flashlin" && ! -x "$HERE/bin/flashlin" ]]; then
+  # Common after a zip-based transfer: zip doesn't reliably preserve the
+  # Unix executable bit, so a file that arrived intact still needs this.
+  yellow "bin/flashlin is present but not executable — fixing (likely lost the +x bit in transit, e.g. via a .zip)."
+  chmod +x "$HERE/bin/flashlin"
+fi
+
 if [[ ! -x "$HERE/bin/flashlin" ]]; then
-  red "bin/flashlin not found (or not executable) next to this script."
+  red "bin/flashlin not found next to this script."
   red "Build it first — see ../README.md — or check the package upload."
   exit 1
 fi
