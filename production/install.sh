@@ -51,6 +51,34 @@ if [[ -f /etc/os-release ]]; then
   OS_PRETTY="${PRETTY_NAME:-${NAME:-Linux}}"
 fi
 
+# Short badge text for the default welcome page's OS indicator.
+detect_os_logo() {
+  case "$OS_ID" in
+    ubuntu)    echo "UB" ;;
+    debian)    echo "DE" ;;
+    kali)      echo "KA" ;;
+    linuxmint) echo "MI" ;;
+    pop)       echo "PO" ;;
+    raspbian)  echo "PI" ;;
+    centos)    echo "CE" ;;
+    rhel)      echo "RH" ;;
+    rocky)     echo "RL" ;;
+    almalinux) echo "AL" ;;
+    fedora)    echo "FE" ;;
+    ol)        echo "OL" ;;
+    arch)      echo "AR" ;;
+    manjaro)   echo "MJ" ;;
+    opensuse*) echo "SU" ;;
+    alpine)    echo "AP" ;;
+    gentoo)    echo "GE" ;;
+    *)         echo "LX" ;;
+  esac
+}
+
+escape_sed_value() {
+  printf '%s' "$1" | sed 's/[\/&|]/\\&/g'
+}
+
 # ── Package manager detection ─────────────────────────────────────────────────
 # Only used to ensure a CA bundle is present; nothing here is downloaded.
 detect_pkg_install_cmd() {
@@ -253,7 +281,23 @@ else
 fi
 
 step "Deploying default web root to $PUBLIC_DIR"
+INDEX_WAS_ABSENT=1
+[[ -f "$PUBLIC_DIR/index.html" ]] && INDEX_WAS_ABSENT=0
 cp -r --update=none "$HERE/public/." "$PUBLIC_DIR/" 2>/dev/null || cp -rn "$HERE/public/." "$PUBLIC_DIR/"
+
+if [[ $INDEX_WAS_ABSENT -eq 1 && -f "$PUBLIC_DIR/index.html" ]]; then
+  # Fill in the default welcome page's OS badge and document-root path —
+  # only for the page we just deployed, never touching a real site.
+  OS_NAME_SAFE="$(escape_sed_value "$OS_PRETTY")"
+  OS_LOGO_SAFE="$(escape_sed_value "$(detect_os_logo)")"
+  PUBLIC_DIR_SAFE="$(escape_sed_value "$PUBLIC_DIR")"
+  sed -i \
+    -e "s|__FLASHLIN_OS_NAME__|$OS_NAME_SAFE|g" \
+    -e "s|__FLASHLIN_OS_LOGO__|$OS_LOGO_SAFE|g" \
+    -e "s|__FLASHLIN_DOC_ROOT__|$PUBLIC_DIR_SAFE|g" \
+    "$PUBLIC_DIR/index.html"
+  green "Default welcome page customized for $OS_PRETTY."
+fi
 
 step "Installing systemd service unit"
 if command -v systemctl >/dev/null 2>&1; then

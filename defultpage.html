@@ -58,17 +58,14 @@
         }
 
         .logo {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--brand-primary);
             display: flex;
             align-items: center;
-            gap: 8px;
         }
 
-        .logo svg {
-            width: 24px;
-            height: 24px;
+        .logo-img {
+            height: 28px;
+            width: auto;
+            display: block;
         }
 
         .status {
@@ -115,6 +112,25 @@
             font-size: 0.82rem;
             font-weight: 800;
             letter-spacing: 0;
+        }
+
+        .protocol-badges {
+            margin-top: 16px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #eff6ff;
+            border: 1px solid #dbeafe;
+            color: var(--brand-primary);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 999px;
         }
 
         /* Hero Section */
@@ -266,10 +282,7 @@
     <div class="container">
         <header>
             <div class="logo">
-                <svg fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                FlashLin
+                <img src="logo.png" alt="FlashLin" class="logo-img">
             </div>
             <div class="status">
                 <div class="status-dot"></div>
@@ -283,6 +296,12 @@
             <div class="os-badge">
                 <span class="os-logo">__FLASHLIN_OS_LOGO__</span>
                 <span>Installed on __FLASHLIN_OS_NAME__</span>
+            </div>
+            <div class="protocol-badges">
+                <span class="badge">HTTP/1.1</span>
+                <span class="badge">HTTP/2</span>
+                <span class="badge">HTTP/3</span>
+                <span class="badge">TLS · ACME</span>
             </div>
         </section>
 
@@ -334,7 +353,6 @@
                     certificates.</p>
             </div>
 
-            <!-- Changed from Database Ready to Cache Ready -->
             <div class="resource-card">
                 <div class="resource-icon">
                     <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -344,14 +362,15 @@
                     </svg>
                 </div>
                 <h3>Cache Ready</h3>
-                <p>Your environment is optimized for high performance. Configure Redis or Memcached via the command line
-                    interface for lightning-fast responses.</p>
+                <p>Built-in in-memory response caching and static-file delivery are on by
+                    default. Tune budget, TTL and per-file limits under
+                    <code>[cache]</code> in <code>server.toml</code>.</p>
             </div>
 
         </div>
 
         <footer>
-            FlashLin Server Architecture - __FLASHLIN_OS_NAME__ Environment Setup
+            FlashLin v2.0.0 &middot; running on __FLASHLIN_OS_NAME__
         </footer>
     </div>
 
