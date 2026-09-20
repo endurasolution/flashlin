@@ -463,6 +463,8 @@ interoperability and production load validation remain pending.
 
 ## License
 
+Powered By **Endurasolution**.
+
 FlashLin is licensed under **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
 
 - Free to use, share, and adapt for **non-commercial** purposes with attribution.

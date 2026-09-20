@@ -4,6 +4,7 @@ pub const FLASHLIN_LICENSE_VERSION: &str = "CC-BY-NC-4.0";
 pub const FLASHLIN_LICENSE_TYPE: &str =
     "Creative Commons Attribution-NonCommercial 4.0 International";
 pub const FLASHLIN_LICENSE_FILE_EXT: &str = ".flashlin";
+pub const FLASHLIN_POWERED_BY: &str = "Endurasolution";
 
 pub fn print_version() {
     println!("FlashLin {}", env!("CARGO_PKG_VERSION"));
@@ -26,6 +27,7 @@ pub fn print_version() {
     println!("License Type: {}", FLASHLIN_LICENSE_TYPE);
     println!("License Version: {}", FLASHLIN_LICENSE_VERSION);
     println!("License View Format: *{}", FLASHLIN_LICENSE_FILE_EXT);
+    println!("Powered By: {}", FLASHLIN_POWERED_BY);
 }
 
 pub fn print_license() {
@@ -38,6 +40,7 @@ pub fn license_text() -> String {
          Version Code: {}\n\
          Release Date: {}\n\
          FlashLin Version: {}\n\
+         Powered By: {}\n\
          License Type: {}\n\
          License Version: {}\n\
          License URL: https://creativecommons.org/licenses/by-nc/4.0/\n\n\
@@ -64,6 +67,7 @@ pub fn license_text() -> String {
         FLASHLIN_VERSION_CODE,
         FLASHLIN_RELEASE_DATE,
         env!("CARGO_PKG_VERSION"),
+        FLASHLIN_POWERED_BY,
         FLASHLIN_LICENSE_TYPE,
         FLASHLIN_LICENSE_VERSION
     )
