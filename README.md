@@ -345,6 +345,24 @@ WantedBy=multi-user.target
 sudo systemctl enable --now flashlin
 ```
 
+Once a systemd unit is in place (this one, or the one `production/install.sh`
+generates), `flashlin` itself doubles as a control command — run
+`flashlin --help` for the full list:
+
+```bash
+sudo flashlin start | stop | restart   # wraps systemctl <action> flashlin
+flashlin status                        # wraps systemctl status flashlin
+flashlin purge cache [config]          # clears the running server's in-memory cache
+sudo flashlin remove                   # stops the service, removes binary + unit
+```
+
+`purge cache` is the one that isn't just a `systemctl` wrapper: the cache it
+clears lives in the running server's own memory, so it works by sending a
+loopback-only HTTP request to that process instead of touching anything on
+disk. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md#operating-the-server)
+for details, and [production/README.md](production/README.md) if you're
+using the `production/` deployment package.
+
 ---
 
 ## Docker

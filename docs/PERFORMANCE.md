@@ -102,6 +102,25 @@ depends on workload and must be measured, not assumed.
 `/metrics` is restricted to loopback clients. Scrape it using a local monitoring
 agent; a `.flashweb` rule cannot grant remote access to this built-in endpoint.
 
+Once installed via `production/install.sh`, `flashlin` doubles as a control
+command for the systemd service it sets up — run `flashlin --help` for the
+full list:
+
+```bash
+sudo flashlin start | stop | restart   # thin wrappers around systemctl <action> flashlin
+flashlin status                        # systemctl status flashlin (no sudo needed to view)
+flashlin purge cache [config]          # clear the running server's in-memory response cache
+sudo flashlin remove                   # stop, disable, and remove the binary + systemd unit
+```
+
+`purge cache` is the one that isn't just a `systemctl` wrapper: the response
+cache lives in the memory of the already-running server process, so nothing
+filesystem- or service-level can reach it. It sends a loopback-only HTTP
+request (`POST /flashlin/purge-cache`, same access model as `/metrics`) to
+that process instead. `remove` mirrors `production/uninstall.sh`'s default,
+non-destructive behavior — config, web root and TLS/ACME data are left in
+place; use `uninstall.sh --purge` to remove those too.
+
 ## Verification and remaining release work
 
 The TCP regression test covers small-file cache hits, file-change freshness,

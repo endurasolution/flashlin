@@ -425,8 +425,12 @@ USEFUL COMMANDS
     sudo systemctl stop flashlin
     sudo systemctl restart flashlin
 
+    (equivalently: sudo flashlin start | stop | restart --
+     flashlin itself now wraps these systemctl calls; see below)
+
   View status:
     sudo systemctl status flashlin
+    flashlin status                  (no sudo needed to view)
 
   Live logs:
     sudo journalctl -u flashlin -f
@@ -446,6 +450,17 @@ USEFUL COMMANDS
 
   Validate config without starting:
     flashlin --check /etc/flashlin/server.toml
+
+  Clear the running server's in-memory response cache (files on disk are
+  never touched -- this only clears cached responses held in memory):
+    flashlin purge cache /etc/flashlin/server.toml
+
+  Stop the service and remove the binary + systemd unit (config, web root
+  and TLS/ACME data are left in place):
+    sudo flashlin remove
+
+  Full command list:
+    flashlin --help
 
   Prometheus metrics (loopback only):
     curl http://127.0.0.1:PORT/metrics

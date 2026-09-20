@@ -113,10 +113,11 @@ one careful reading and 78 passing tests," not as "proven correct."
    buffering) is a meaningful behavioral change worth confirming in your
    environment.
 7. **Know how to roll back**: both flags are plain config booleans. Setting
-   either back to `false` and restarting (or reloading via `--watch`, for
-   settings that support hot reload — check `src/server/reload.rs` for which
-   fields apply without a restart) returns to the pre-existing, more
-   battle-tested code path immediately.
+   either back to `false` and running `sudo flashlin restart` (or reloading
+   via `--watch`, for settings that support hot reload — check
+   `src/server/reload.rs` for which fields apply without a restart) returns
+   to the pre-existing, more battle-tested code path immediately.
+   `flashlin status` shows whether the service is actually back up.
 
 ## Benchmark evidence and its limits
 
