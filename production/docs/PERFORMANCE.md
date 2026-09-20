@@ -127,7 +127,7 @@ Apache and Flashlin under identical settings on real Linux; see
 [docs/PRODUCTION.md](PRODUCTION.md) for what its results do and don't establish
 about enabling `server.sendfile`/`server.direct_static_io` in production.
 
-The v2 release is still in development: independent SNI certificate selection,
-fully streamed uploads, PHP-FPM pooling, active health probes, broader HTTP
-compliance/security testing, real-domain ACME validation and production benchmark
-comparisons remain release work.
+Ongoing hardening work: independent SNI certificate selection, fully streamed
+uploads, PHP-FPM pooling, active health probes, broader HTTP compliance/security
+testing, real-domain ACME validation and further production benchmark comparisons.
+See [CHANGELOG.md](../CHANGELOG.md) for the current roadmap.

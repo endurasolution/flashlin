@@ -1,9 +1,10 @@
 # HTTP/1.1, HTTP/2 and HTTP/3 in FlashLin v2
 
-V2 remains in development. HTTP/3 is implemented as an **optional, experimental
-origin listener** using [h3](https://github.com/hyperium/h3) and
-[Quinn](https://docs.rs/quinn/0.11.11/quinn/). It is not a claim of production
-readiness or a measured speed advantage over Nginx / Apache.
+HTTP/3 is implemented as an **optional, explicitly experimental origin
+listener** using [h3](https://github.com/hyperium/h3) and
+[Quinn](https://docs.rs/quinn/0.11.11/quinn/), off by default and requiring
+`--features http3`. Enabling it is not a claim of a measured speed advantage
+over Nginx / Apache; see [benchmarks/README.md](../benchmarks/README.md).
 
 ## Protocol matrix
 

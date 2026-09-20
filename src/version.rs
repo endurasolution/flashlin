@@ -7,7 +7,7 @@ pub const FLASHLIN_LICENSE_FILE_EXT: &str = ".flashlin";
 
 pub fn print_version() {
     println!("FlashLin {}", env!("CARGO_PKG_VERSION"));
-    println!("Status: development (not a production release)");
+    println!("Status: production release");
     println!(
         "Protocols: HTTP/1.1, HTTP/2{}",
         if cfg!(feature = "http3") {

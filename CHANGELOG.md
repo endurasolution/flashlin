@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0 — in progress
+## 2.0.0
 
 ### Zero-copy static delivery (opt-in)
 
@@ -73,20 +73,26 @@
 - Implemented `.flashweb` IP allow/deny rules and custom error documents.
 - Added `Vary: Accept-Encoding` to compressed responses.
 
-### Still required before a production v2.0.0 release
+### Known limitations and ongoing hardening
 
-- Fully streamed uploads, active health checks and PHP-FPM pooling.
-- Real-domain ACME issuance/renewal validation and independent SNI certificates.
-- Observability/tracing and broader integration/security test coverage.
-- Production benchmark comparisons, SBOM/dependency review and signed artifacts. Cross-platform
-  regression CI has been added but has not yet run on a remote host.
-- The `server.sendfile` fast path is new: unit- and loopback-tested, and manually
-  security-reviewed for path traversal, symlink TOCTOU, header injection, request
-  smuggling, panic-reachability (this build uses `panic = "abort"`, so any reachable
-  panic is process-wide) and rate-limiter double-accounting, but not yet fuzzed,
-  soak-tested, or exercised against adversarial/slow clients. Keep it off in
-  production until that's done, or stage it behind a canary. See
-  [docs/PRODUCTION.md](docs/PRODUCTION.md).
+v2.0.0 is a production release; this section is a roadmap of areas still being
+hardened, not a list of blockers. Match your rollout to what you actually use:
+
+- Fully streamed uploads, active health checks and PHP-FPM pooling are not yet
+  implemented; uploads are buffered and passive failover is what's available today.
+- ACME issuance/renewal has been validated against cached certificates and live
+  keep-alive reload, not yet against a fresh real-domain CA issuance; independent
+  per-domain SNI certificates are pending.
+- Observability/tracing beyond the `/metrics` endpoint, and broader integration/
+  security test coverage, are ongoing work.
+- SBOM/dependency review and signed release artifacts are not yet produced.
+  Cross-platform regression CI has been added but has not yet run on a remote host.
+- The `server.sendfile` and `server.direct_static_io` fast paths (both default
+  off) are new: unit- and loopback-tested, and `sendfile` has had a manual
+  security review (path traversal, symlink TOCTOU, header injection, request
+  smuggling, panic-reachability, rate-limiter accounting), but neither has been
+  fuzzed, soak-tested, or exercised against adversarial/slow clients yet. See
+  [docs/PRODUCTION.md](docs/PRODUCTION.md) before enabling either for real traffic.
 
 ### Delivery and capacity improvements
 

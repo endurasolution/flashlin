@@ -11,7 +11,7 @@
 
 **Fast · Reliable · Cached · Powerful**
 
-A Rust web server. Version 2.0 is in development; see the release checklist below.
+A Rust web server. Version 2.0 is a production release; see the roadmap below for ongoing hardening work.
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 [![Rust](https://img.shields.io/badge/Rust-tested%201.95-orange)](https://www.rust-lang.org)
@@ -424,15 +424,15 @@ flashlin/
 
 ---
 
-## v2.0 release track
+## v2.0 roadmap
 
-| Milestone | Features |
+| Milestone | Status |
 |---|---|
-| **v2.0 core** | Per-host runtime state, metrics endpoint, static mounts, directory ACLs/error pages, enforced worker and header-read settings |
-| **v2.0 proxy — implemented** | Streamed responses, verified HTTPS upstreams, connection pools, round-robin balancing, passive failover, WebSockets |
-| **v2.0 operations** | Hot reload delivered; OpenTelemetry, cache purge/revalidation and log rotation pending |
-| **v2.0 TLS** | ACME and manual certificate reload delivered; independent SNI certificates pending |
-| **v2.0 release** | Security review, compatibility suite, benchmark report, signed release artifacts |
+| **v2.0 core** | Delivered: per-host runtime state, metrics endpoint, static mounts, directory ACLs/error pages, enforced worker and header-read settings |
+| **v2.0 proxy** | Delivered: streamed responses, verified HTTPS upstreams, connection pools, round-robin balancing, passive failover, WebSockets. Pending: fully streamed uploads, active health probes |
+| **v2.0 operations** | Delivered: hot reload. Pending: OpenTelemetry, cache purge/revalidation, log rotation |
+| **v2.0 TLS** | Delivered: ACME and manual certificate reload. Pending: independent per-domain SNI certificates |
+| **v2.0 hardening** | Pending: independent security review, broader compatibility suite, SBOM/dependency review, signed release artifacts |
 
 The current implementation and its limits are documented in
 [PERFORMANCE.md](docs/PERFORMANCE.md). Start with
@@ -445,13 +445,19 @@ reload, and build with `--features acme` for automatic certificates. See
 `server.sendfile`/`server.direct_static_io` fast paths, read
 [docs/PRODUCTION.md](docs/PRODUCTION.md) — both default off. Requests/uploads are still buffered;
 independent SNI certificates, active health probes and PHP-FPM pooling remain
-pending. Real-domain ACME issuance and production comparisons still require
-deployment validation. No speed advantage over
-Nginx or Apache has been measured.
+pending. Real-domain ACME issuance still requires deployment validation.
 
-HTTP/3 is now available as an optional experimental QUIC listener alongside
-HTTP/1.1 and HTTP/2. Independent HTTP/3 interoperability and production load
-validation remain pending; this does not change the v2 development status.
+A CPU-isolated Docker/Ubuntu benchmark against nginx and Apache (see
+[benchmarks/ubuntu/](benchmarks/ubuntu/) and
+[benchmarks/ubuntu-results/run8/REPORT.md](benchmarks/ubuntu-results/run8/REPORT.md))
+showed large-file throughput matching or exceeding both with `server.sendfile`
+enabled; small-file throughput still trails nginx at high concurrency. This is
+one controlled measurement, not a general speed claim across all workloads —
+benchmark your own traffic before relying on it.
+
+HTTP/3 is available as an optional, explicitly experimental QUIC listener
+alongside HTTP/1.1 and HTTP/2 (`--features http3`). Independent HTTP/3
+interoperability and production load validation remain pending.
 
 ---
 

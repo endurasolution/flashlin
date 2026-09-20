@@ -1,10 +1,11 @@
-# Production readiness
+# Enabling the sendfile / direct_static_io fast paths safely
 
-This is a checklist and a status report, not a certification. It exists
-because two opt-in flags — `server.sendfile` and `server.direct_static_io` —
-were added and benchmarked in one working session, and that is not, by
-itself, a reason to trust them with real traffic. Read this before enabling
-either one outside a controlled environment.
+FlashLin v2.0.0 is a production release; this doc is scoped narrowly to two
+new **opt-in** flags — `server.sendfile` and `server.direct_static_io` —
+added and benchmarked in one working session. Both default to `false` and
+change nothing about FlashLin's existing behavior until you turn them on.
+That recency is a reason for a deliberate rollout, not a reason to avoid
+them; read this before enabling either one outside a controlled environment.
 
 ## Status summary
 
