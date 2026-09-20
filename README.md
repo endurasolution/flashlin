@@ -1,23 +1,22 @@
 <div align="center">
+  <img src="public/logo.png" alt="FlashLin" width="360">
 
-```
-  ______ _           _     _     _
- |  ____| |         | |   | |   (_)
- | |__  | | __ _ ___| |__ | |    _ _ __
- |  __| | |/ _` / __| '_ \| |   | | '_ \
- | |    | | (_| \__ \ | | | |___| | | | |
- |_|    |_|\__,_|___/_| |_|_____|_|_| |_|
-```
+  ### The blazing fast Rust web server
 
-**Fast · Reliable · Cached · Powerful**
+  Nginx's reverse-proxy power, Apache's PHP hosting flexibility, and Caddy's
+  zero-friction TOML setup — in a single, memory-safe Rust binary.
+  Version 2.0 is a production release; see the roadmap below for ongoing
+  hardening work.
 
-A Rust web server. Version 2.0 is a production release; see the roadmap below for ongoing hardening work.
+  [**Website**](https://flashlin.com) · [**Documentation**](https://flashlin.com/docs) · [**Docker Hub**](https://hub.docker.com/r/endurasolution/flashlin)
 
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-[![Rust](https://img.shields.io/badge/Rust-tested%201.95-orange)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/endurasolution/flashlin)
-[![Docker](https://img.shields.io/docker/pulls/endurasolution/flashlin)](https://hub.docker.com/r/endurasolution/flashlin)
+  [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+  [![Rust](https://img.shields.io/badge/Rust-tested%201.95-orange)](https://www.rust-lang.org)
+  [![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/endurasolution/flashlin/releases)
+  [![Docker Pulls](https://img.shields.io/docker/pulls/endurasolution/flashlin)](https://hub.docker.com/r/endurasolution/flashlin)
+  [![Website](https://img.shields.io/badge/website-flashlin.com-00d2d2)](https://flashlin.com)
 
+  <img src=".github/assets/hero-screenshot.png" alt="FlashLin — the blazing fast Rust web server" width="820">
 </div>
 
 ---
