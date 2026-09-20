@@ -2,6 +2,24 @@
 
 ## 2.0.0
 
+### Service control commands
+
+- Added `flashlin start|stop|restart|status`: thin wrappers around
+  `systemctl <action> flashlin`, for the unit `production/install.sh`
+  installs. Not a second process supervisor — systemd still owns
+  restart-on-failure and log capture.
+- Added `flashlin purge cache [config]`: clears the running server's
+  in-memory response cache (default and every virtual host). The cache
+  lives in that process's memory, so this works by sending a loopback-only
+  HTTP request (`POST /flashlin/purge-cache`, same access model as
+  `/metrics`) to the already-running server rather than touching anything
+  on disk.
+- Added `flashlin remove`: stops/disables the service and removes the
+  binary and systemd unit — the same safe default as
+  `production/uninstall.sh` with no flags. Config, web root and TLS/ACME
+  data are left in place; use `uninstall.sh --purge` to remove those too.
+- Added `flashlin --help`.
+
 ### Zero-copy static delivery (opt-in)
 
 - Added `server.sendfile` (Linux-only, default off): a minimal HTTP/1.1

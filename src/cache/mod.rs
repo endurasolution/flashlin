@@ -165,6 +165,15 @@ impl ResponseCache {
         }
     }
 
+    /// Drops every cached entry. Returns the count removed, for reporting.
+    pub fn clear(&self) -> usize {
+        let _guard = self.mutation.lock().unwrap_or_else(|e| e.into_inner());
+        let removed = self.store.len();
+        self.store.clear();
+        self.current_bytes.store(0, Ordering::Relaxed);
+        removed
+    }
+
     pub fn default_ttl(&self) -> Duration {
         self.default_ttl
     }

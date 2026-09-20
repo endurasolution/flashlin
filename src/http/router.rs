@@ -42,6 +42,17 @@ impl std::fmt::Debug for HostStates {
         f.debug_struct("HostStates").finish_non_exhaustive()
     }
 }
+impl HostStates {
+    /// Clears every response cache this process holds — the default host's
+    /// and every virtual host's. Returns the total entries removed.
+    pub fn clear_all_caches(&self) -> usize {
+        let mut removed = self.default_cache.get().map(|c| c.clear()).unwrap_or(0);
+        for entry in self.caches.iter() {
+            removed += entry.value().clear();
+        }
+        removed
+    }
+}
 static METRICS: OnceLock<Arc<crate::metrics::prometheus::Metrics>> = OnceLock::new();
 static REQUEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -208,6 +219,23 @@ where
             .status(200)
             .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
             .body(ResponseBody::new(Bytes::from(metrics().render())))
+            .unwrap_or_else(|_| error_500(server_name));
+    }
+
+    // Loopback-only control endpoint backing `flashlin purge cache`. Clears
+    // every in-memory response cache this process holds (default host and
+    // every virtual host); does not touch files on disk or other processes.
+    if parsed.path == "/flashlin/purge-cache" && method == Method::POST {
+        if !remote_addr.ip().is_loopback() {
+            return error_403(server_name);
+        }
+        let removed = config.state.clear_all_caches();
+        return Response::builder()
+            .status(200)
+            .header("content-type", "text/plain; charset=utf-8")
+            .body(ResponseBody::new(Bytes::from(format!(
+                "purged {removed} cache entries\n"
+            ))))
             .unwrap_or_else(|_| error_500(server_name));
     }
 
@@ -836,12 +864,35 @@ pub(crate) fn merge_vhost(global: &ServerConfig, vhost: &VirtualHostConfig) -> S
 
 #[cfg(test)]
 mod tests {
-    use super::static_relative_path;
+    use super::{get_cache, static_relative_path};
+    use crate::cache::CachedEntry;
+    use std::time::Duration;
 
     #[test]
     fn static_mount_removes_its_url_prefix() {
         assert_eq!(static_relative_path("/assets/app.js", "/assets"), "/app.js");
         assert_eq!(static_relative_path("/assets", "/assets"), "/");
         assert_eq!(static_relative_path("/index.html", "/"), "/index.html");
+    }
+
+    #[test]
+    fn clear_all_caches_purges_the_default_host_and_every_virtual_host() {
+        let config = crate::default_config();
+        let default_cache = get_cache(&config, "default");
+        let vhost_cache = get_cache(&config, "vhost:example.com");
+        default_cache.insert(
+            "a".into(),
+            CachedEntry::new(bytes::Bytes::from_static(b"x"), Duration::from_secs(60)),
+        );
+        vhost_cache.insert(
+            "b".into(),
+            CachedEntry::new(bytes::Bytes::from_static(b"y"), Duration::from_secs(60)),
+        );
+
+        assert_eq!(config.state.clear_all_caches(), 2);
+        assert!(default_cache.get("a").is_none());
+        assert!(vhost_cache.get("b").is_none());
+        // Safe to call again with nothing left to clear.
+        assert_eq!(config.state.clear_all_caches(), 0);
     }
 }

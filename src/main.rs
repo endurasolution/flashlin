@@ -2,6 +2,7 @@
 // v2.0.0 — production hardening · per-host state · metrics · static mounts
 
 mod cache;
+mod cli;
 mod config;
 mod error;
 mod error_pages;
@@ -30,6 +31,10 @@ use tracing::info;
 fn main() -> anyhow::Result<()> {
     if handle_metadata_command() {
         return Ok(());
+    }
+    let cli_args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(exit_code) = cli::try_dispatch(&cli_args) {
+        std::process::exit(exit_code);
     }
 
     let banner = r#"
@@ -99,7 +104,41 @@ fn handle_metadata_command() -> bool {
             version::print_license();
             true
         }
+        "--help" | "-h" | "help" => {
+            print_help();
+            true
+        }
         _ => false,
+    }
+}
+
+fn print_help() {
+    let lines = [
+        "FlashLin — Fast, Reliable, Cached, Powerful Rust web server",
+        "",
+        "Run the server:",
+        "  flashlin [server.toml]         Run in the foreground (default: ./server.toml)",
+        "  flashlin --watch [server.toml] Run with file-polled hot config reload",
+        "  flashlin --check [server.toml] Validate configuration without binding a port (-t)",
+        "",
+        "Manage an installed service (requires production/install.sh's systemd unit):",
+        "  flashlin start                 Start the flashlin systemd service",
+        "  flashlin stop                  Stop it",
+        "  flashlin restart               Restart it",
+        "  flashlin status                Show whether it's running (systemctl status)",
+        "  flashlin purge cache [config]  Clear the running server's in-memory response cache",
+        "  flashlin remove                Stop it and remove the binary + systemd unit",
+        "                                 (config, web root and certs are left in place)",
+        "",
+        "Other:",
+        "  flashlin --version             Show version and build info (-V)",
+        "  flashlin --license             Show the license text",
+        "  flashlin --help                Show this message (-h)",
+        "",
+        "Full docs: docs/PRODUCTION.md and production/README.md in the repository.",
+    ];
+    for line in lines {
+        println!("{line}");
     }
 }
 

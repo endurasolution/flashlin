@@ -47,6 +47,34 @@ curl -I http://localhost/
 journalctl -u flashlin -f                     # tail logs
 ```
 
+## Managing the service
+
+Once installed, `flashlin` itself doubles as a control command — run
+`flashlin --help` for the full list. These require the systemd unit
+`install.sh` sets up; they're thin wrappers around `systemctl`, not a
+second process supervisor:
+
+```bash
+sudo flashlin start      # systemctl start flashlin
+sudo flashlin stop       # systemctl stop flashlin
+sudo flashlin restart    # systemctl restart flashlin
+flashlin status          # systemctl status flashlin (no sudo needed to view)
+```
+
+`flashlin purge cache [config]` is different: FlashLin's response cache
+lives in the memory of the *running* server process, so nothing filesystem-
+or systemd-level can clear it. This sends a loopback-only HTTP request
+(`POST /flashlin/purge-cache`) to the running server itself — reachable only
+from the same machine, same as `/metrics`. It reads `server.port` from the
+config (default: `/etc/flashlin/server.toml`, or pass a path) to know where
+to connect. Only clears the in-memory cache — never touches files on disk.
+
+`sudo flashlin remove` stops and disables the service and removes the
+binary and systemd unit — the same safe, non-destructive default as
+`uninstall.sh` with no flags (config, web root and certs are left in
+place). Unlike the shell script, it has no `--purge` equivalent; use
+`uninstall.sh --purge` for that.
+
 ## Uninstall
 
 ```bash
