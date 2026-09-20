@@ -373,7 +373,7 @@
                         Root</span>
                     <span class="path-text" id="docRootPath">./public</span>
                 </div>
-                <button class="copy-btn" onclick="copyPath()" id="copyBtn">Copy Path</button>
+                <button class="copy-btn" id="copyBtn">Copy Path</button>
             </div>
         </section>
 
@@ -427,82 +427,10 @@
         </footer>
     </div>
 
-    <script>
-        // Measures real, this-visit page load time with the Navigation Timing
-        // API (not a synthetic/marketing number) and labels it the way a
-        // visitor would judge it: Blazing fast / Fast / Moderate / Slow.
-        // Thresholds are plain wall-clock time to fully load this page,
-        // including the network round trip — closer to "did this feel fast"
-        // than a lab-only server-side timing would be.
-        function reportLoadSpeed() {
-            var ms = null;
-            var nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
-            if (nav && nav.loadEventEnd > 0) {
-                ms = Math.round(nav.loadEventEnd - nav.startTime);
-            } else if (performance.timing && performance.timing.loadEventEnd > 0) {
-                ms = performance.timing.loadEventEnd - performance.timing.navigationStart;
-            }
-
-            var badge = document.getElementById('speedBadge');
-            var text = document.getElementById('speedText');
-            if (ms === null || ms < 0 || !badge || !text) {
-                if (text) text.textContent = 'Load time unavailable in this browser';
-                return;
-            }
-
-            var label, cls;
-            if (ms < 100) {
-                label = 'Blazing fast';
-                cls = 'speed-fast';
-            } else if (ms < 300) {
-                label = 'Fast';
-                cls = 'speed-fast';
-            } else if (ms < 1000) {
-                label = 'Moderate';
-                cls = 'speed-moderate';
-            } else {
-                label = 'Slow';
-                cls = 'speed-slow';
-            }
-
-            badge.classList.remove('speed-fast', 'speed-moderate', 'speed-slow');
-            badge.classList.add(cls);
-            text.textContent = 'Loaded in ' + ms + ' ms — ' + label;
-        }
-
-        if (document.readyState === 'complete') {
-            // setTimeout: loadEventEnd is only finalized once the load event
-            // itself has fully fired, including for a script running after it.
-            setTimeout(reportLoadSpeed, 0);
-        } else {
-            window.addEventListener('load', function () {
-                setTimeout(reportLoadSpeed, 0);
-            });
-        }
-
-        // Simple JS to handle copying the server path
-        function copyPath() {
-            const pathText = document.getElementById('docRootPath').innerText;
-            const btn = document.getElementById('copyBtn');
-
-            navigator.clipboard.writeText(pathText).then(() => {
-                const originalText = btn.innerText;
-                btn.innerText = 'Copied!';
-                btn.style.backgroundColor = 'var(--success-color)';
-                btn.style.color = 'white';
-                btn.style.borderColor = 'var(--success-color)';
-
-                setTimeout(() => {
-                    btn.innerText = originalText;
-                    btn.style.backgroundColor = 'var(--surface-color)';
-                    btn.style.color = 'var(--text-secondary)';
-                    btn.style.borderColor = 'var(--border-color)';
-                }, 2000);
-            }).catch(err => {
-                console.error('Failed to copy text: ', err);
-            });
-        }
-    </script>
+    <!-- External file, not inline: the default Content-Security-Policy sends
+         script-src 'self' with no 'unsafe-inline', which silently blocks
+         inline <script> blocks. See welcome.js's own header comment. -->
+    <script src="welcome.js"></script>
 </body>
 
 </html>
