@@ -1,0 +1,34 @@
+FlashLin License View (*.flashlin)
+Version Code: FL-0.4.0-20260505
+Release Date: 2026-05-05
+FlashLin Version: 0.4.0
+License Type: Creative Commons Attribution-NonCommercial 4.0 International
+License Version: CC-BY-NC-4.0
+License URL: https://creativecommons.org/licenses/by-nc/4.0/
+
+License
+
+FlashLin is licensed under the Creative Commons Attribution-NonCommercial
+4.0 International License (CC BY-NC 4.0).
+
+You may share and adapt FlashLin for non-commercial use, provided that
+appropriate credit is given to FlashLin and its developer/team, a link to
+the license is provided, and changes are indicated where applicable.
+
+Commercial use is not permitted without separate written permission from
+the FlashLin developer/team.
+
+Disclaimer
+
+FlashLin is provided as-is and as-available, without warranties or
+guarantees of any kind. The developer, team, contributors, and distributors
+are not responsible or liable for any issue, damage, outage, security
+incident, data loss, business loss, server problem, operating system
+problem, configuration error, misuse, or any direct or indirect consequence
+caused by installing, running, modifying, deploying, or using this software.
+
+Users are responsible for testing, securing, configuring, backing up, and
+operating their own systems before and after using FlashLin.
+
+The authoritative license view is embedded in the FlashLin binary and can
+be displayed with: flashlin --license

@@ -13,8 +13,20 @@ production/
 ├── uninstall.sh           Removes it again (see "Uninstall" below)
 ├── public/               Default web root (index page + error pages)
 ├── docs/                 PRODUCTION.md, PERFORMANCE.md, AUTOMATIC_HTTPS_AND_RELOAD.md
-└── LICENSE.txt
+├── LICENSE.txt
+├── centos/               Same package, x86_64 — CentOS/RHEL/Rocky/AlmaLinux/Fedora/Oracle notes
+├── debian/               Same package, x86_64 — Debian/Kali/Mint/Pop!_OS notes
+├── raspberry-pi/         Same package, arm64 binary — for Raspberry Pi and other ARM boards
+└── universal/            Same package, x86_64 — any other systemd/OpenRC distro (Arch, openSUSE, Alpine, Gentoo, ...)
 ```
+
+This top-level folder and the four subfolders are functionally identical —
+same `install.sh`, same `server.toml`, same docs. Pick whichever one
+matches your target server (or just use this one; `install.sh`
+auto-detects the distro either way) and upload only that folder. The one
+exception is **`raspberry-pi/`, which ships an arm64 binary** instead of
+x86_64 — that's the only folder that matters architecturally; the rest
+is organizational.
 
 **Read [docs/PRODUCTION.md](docs/PRODUCTION.md) before enabling `sendfile` or
 `direct_static_io` in `server.toml`.** Both default off; this package's

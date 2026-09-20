@@ -1,0 +1,18 @@
+[Unit]
+Description=FlashLin Web Server
+After=network.target
+
+[Service]
+Type=simple
+# FlashLin has no signal-based reload (SIGHUP is not handled and would
+# terminate it, so this intentionally has no ExecReload=). For config/cert
+# hot-reload without a restart, add --watch: it polls the config file for
+# validated changes every 2 seconds — see docs/AUTOMATIC_HTTPS_AND_RELOAD.md.
+# ExecStart=/usr/local/bin/flashlin --watch /etc/flashlin/server.toml
+ExecStart=/usr/local/bin/flashlin /etc/flashlin/server.toml
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
