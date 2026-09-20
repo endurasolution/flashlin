@@ -15,13 +15,12 @@ set -euo pipefail
 # Architectures: x86_64 (all of the above) and arm64/aarch64 (Raspberry Pi
 # package — the only arm64 build currently shipped).
 #
-# ── FILL THESE IN once the five zips are uploaded to BunnyCDN ──────────────
-# Each must point at the matching zip in production/ (flashlin-*.zip).
-FLASHLIN_URL_UBUNTU="https://REPLACE_ME.b-cdn.net/flashlin/flashlin-ubuntu-x86_64.zip"
-FLASHLIN_URL_DEBIAN="https://REPLACE_ME.b-cdn.net/flashlin/flashlin-debian-x86_64.zip"
-FLASHLIN_URL_CENTOS="https://REPLACE_ME.b-cdn.net/flashlin/flashlin-centos-x86_64.zip"
-FLASHLIN_URL_UNIVERSAL="https://REPLACE_ME.b-cdn.net/flashlin/flashlin-universal-x86_64.zip"
-FLASHLIN_URL_RASPBERRY_PI="https://REPLACE_ME.b-cdn.net/flashlin/flashlin-raspberry-pi-arm64.zip"
+FLASHLIN_CDN_BASE="https://hostfiles.b-cdn.net/flashlin"
+FLASHLIN_URL_UBUNTU="$FLASHLIN_CDN_BASE/flashlin-ubuntu-x86_64.zip"
+FLASHLIN_URL_DEBIAN="$FLASHLIN_CDN_BASE/flashlin-debian-x86_64.zip"
+FLASHLIN_URL_CENTOS="$FLASHLIN_CDN_BASE/flashlin-centos-x86_64.zip"
+FLASHLIN_URL_UNIVERSAL="$FLASHLIN_CDN_BASE/flashlin-universal-x86_64.zip"
+FLASHLIN_URL_RASPBERRY_PI="$FLASHLIN_CDN_BASE/flashlin-raspberry-pi-arm64.zip"
 # ─────────────────────────────────────────────────────────────────────────
 
 TMP_DIR="/tmp/flashlin-install"
@@ -143,12 +142,6 @@ case "$ARCH" in
     exit 1
     ;;
 esac
-
-if [[ "$PKG_URL" == *REPLACE_ME* ]]; then
-  red "This installer's BunnyCDN URLs haven't been filled in yet."
-  red "Edit the FLASHLIN_URL_* constants near the top of this script."
-  exit 1
-fi
 
 show_logo
 blue "Architecture: $ARCH ($NORM_ARCH)"
