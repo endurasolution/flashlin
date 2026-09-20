@@ -63,7 +63,7 @@
         }
 
         .logo-img {
-            height: 28px;
+            height: 60px;
             width: auto;
             display: block;
         }
@@ -131,6 +131,59 @@
             font-weight: 600;
             padding: 4px 12px;
             border-radius: 999px;
+        }
+
+        .speed-badge {
+            margin: 16px auto 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid var(--border-color);
+            background: var(--surface-color);
+            color: var(--text-secondary);
+        }
+
+        .speed-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        /* Load-speed comment colors: green for fast, amber for moderate, red for slow. */
+        .speed-badge.speed-fast {
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+            color: #047857;
+        }
+
+        .speed-badge.speed-fast .speed-dot {
+            background: var(--success-color);
+        }
+
+        .speed-badge.speed-moderate {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #b45309;
+        }
+
+        .speed-badge.speed-moderate .speed-dot {
+            background: #f59e0b;
+        }
+
+        .speed-badge.speed-slow {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #b91c1c;
+        }
+
+        .speed-badge.speed-slow .speed-dot {
+            background: #ef4444;
         }
 
         /* Hero Section */
@@ -303,6 +356,10 @@
                 <span class="badge">HTTP/3</span>
                 <span class="badge">TLS · ACME</span>
             </div>
+            <div class="speed-badge" id="speedBadge">
+                <span class="speed-dot" id="speedDot"></span>
+                <span id="speedText">Measuring page load speed&hellip;</span>
+            </div>
         </section>
 
         <section class="card">
@@ -375,6 +432,58 @@
     </div>
 
     <script>
+        // Measures real, this-visit page load time with the Navigation Timing
+        // API (not a synthetic/marketing number) and labels it the way a
+        // visitor would judge it: Blazing fast / Fast / Moderate / Slow.
+        // Thresholds are plain wall-clock time to fully load this page,
+        // including the network round trip — closer to "did this feel fast"
+        // than a lab-only server-side timing would be.
+        function reportLoadSpeed() {
+            var ms = null;
+            var nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+            if (nav && nav.loadEventEnd > 0) {
+                ms = Math.round(nav.loadEventEnd - nav.startTime);
+            } else if (performance.timing && performance.timing.loadEventEnd > 0) {
+                ms = performance.timing.loadEventEnd - performance.timing.navigationStart;
+            }
+
+            var badge = document.getElementById('speedBadge');
+            var text = document.getElementById('speedText');
+            if (ms === null || ms < 0 || !badge || !text) {
+                if (text) text.textContent = 'Load time unavailable in this browser';
+                return;
+            }
+
+            var label, cls;
+            if (ms < 100) {
+                label = 'Blazing fast';
+                cls = 'speed-fast';
+            } else if (ms < 300) {
+                label = 'Fast';
+                cls = 'speed-fast';
+            } else if (ms < 1000) {
+                label = 'Moderate';
+                cls = 'speed-moderate';
+            } else {
+                label = 'Slow';
+                cls = 'speed-slow';
+            }
+
+            badge.classList.remove('speed-fast', 'speed-moderate', 'speed-slow');
+            badge.classList.add(cls);
+            text.textContent = 'Loaded in ' + ms + ' ms — ' + label;
+        }
+
+        if (document.readyState === 'complete') {
+            // setTimeout: loadEventEnd is only finalized once the load event
+            // itself has fully fired, including for a script running after it.
+            setTimeout(reportLoadSpeed, 0);
+        } else {
+            window.addEventListener('load', function () {
+                setTimeout(reportLoadSpeed, 0);
+            });
+        }
+
         // Simple JS to handle copying the server path
         function copyPath() {
             const pathText = document.getElementById('docRootPath').innerText;
