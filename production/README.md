@@ -10,6 +10,7 @@ production/
 ├── server.toml          Production config — read the comments before editing
 ├── flashlin.service     systemd unit
 ├── install.sh            Installs everything above onto this machine
+├── uninstall.sh           Removes it again (see "Uninstall" below)
 ├── public/               Default web root (index page + error pages)
 ├── docs/                 PRODUCTION.md, PERFORMANCE.md, AUTOMATIC_HTTPS_AND_RELOAD.md
 └── LICENSE.txt
@@ -45,6 +46,24 @@ sudo systemctl status flashlin
 curl -I http://localhost/
 journalctl -u flashlin -f                     # tail logs
 ```
+
+## Uninstall
+
+```bash
+sudo ./uninstall.sh            # stops the service, removes the binary and systemd unit
+sudo ./uninstall.sh --purge    # also deletes config, web root, certs and ACME data (asks to confirm)
+sudo ./uninstall.sh --purge -y # same, without the interactive prompt (for scripts)
+```
+
+The default run only removes what's unambiguously safe to remove — the
+binary and the systemd unit — and leaves `/etc/flashlin` (your config and
+any ACME account/certificates), `/etc/flashlinssl` and `/var/www/public`
+in place, since they may hold real content or private keys. It prints
+their paths and sizes so you can review or back them up before deciding.
+`--purge` deletes those too, and always asks you to type `yes` unless you
+also pass `-y`/`--yes`. Firewall rules `install.sh` opened (80/tcp,
+443/tcp, 443/udp) are left as-is, in case something else on the host uses
+them. Safe to re-run either form.
 
 ## Before you rely on this in production
 
