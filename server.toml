@@ -3,6 +3,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 [server]
+# "0.0.0.0" = all IPv4 addresses; "::" = all IPv4 *and* IPv6 addresses (dual
+# stack, on every OS); or one address such as "127.0.0.1" / "::1".
 host         = "0.0.0.0"
 port         = 8080           # Change to 443 when TLS is enabled
 workers      = 4              # Worker threads (omit to use available CPU cores)
@@ -34,6 +36,10 @@ max_connections = 0
 # used by `flashlin purge cache` and `flashlin apps` (the CLI reads it from
 # this file, so keep it chmod 640). At least 16 characters.
 # control_token = "change-me-to-a-long-random-string"
+# Stylesheet linked from directory listings (routes with directory_listing =
+# true), loaded after the built-in styles. Rows have class "dir"/"file"/"parent"
+# and cells "name"/"modified"/"size". Per domain: [domain] directory_listing_css.
+# directory_listing_css = "/assets/listing.css"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TLS / HTTPS  (uncomment to enable)

@@ -32,6 +32,34 @@
   keeps the running config.
 - See [docs/APPS.md](docs/APPS.md) and [examples/apps.toml](examples/apps.toml).
 
+### Listening on IPv4 and IPv6
+
+- **Fixed:** an IPv6 `server.host` such as `"::"` stopped FlashLin at startup
+  ("invalid socket address syntax"): the address was built as text, giving
+  `:::80`. Hosts are now parsed as IP addresses, with or without brackets,
+  and checked by `flashlin --check`.
+- `host = "::"` now accepts IPv4 and IPv6 clients on every OS, like nginx's
+  `listen [::]:80 ipv6only=off`. Windows (and Linux with
+  `net.ipv6.bindv6only=1`) used to make it IPv6-only. Applies to the HTTP,
+  HTTPS, redirect and HTTP/3 listeners. IPv4 clients arriving this way are
+  reported as plain `1.2.3.4` in logs, `X-Forwarded-For`, ACLs and limits.
+
+### Directory listings
+
+- **Fixed (security):** file and directory names were inserted into listing
+  pages without HTML escaping. A name containing `<` or `"` (allowed on
+  Unix, e.g. in an upload folder) could inject script into the page. Names
+  and the page title are now escaped and links are percent-encoded, which
+  also fixes links to names containing `#`, `?`, `%` or spaces.
+- **Fixed:** listings showed the names of dotfiles and sensitive files
+  (`.env`, `*.sql`, …) even though FlashLin refuses to serve them. They are
+  now left out whenever `block_dotfiles` / `block_sensitive_files` apply.
+- Listings are now an nginx-`autoindex`-style table with last-modified time
+  and size, with CSS classes on every row and cell.
+- New `server.directory_listing_css` (per domain:
+  `[domain] directory_listing_css`) links your own stylesheet after the
+  built-in styles.
+
 ### Security
 
 - **Fixed:** `allow_ips` / `deny_ips` and `.flashweb` access rules did not

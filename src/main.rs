@@ -216,6 +216,7 @@ fn default_config() -> config::ServerConfig {
             sendfile: false,
             max_connections_per_ip: 0,
             control_token: None,
+            directory_listing_css: None,
         },
         http3: None,
         tls: None,

@@ -1,4 +1,4 @@
-use super::parser::{parse_duration_secs, parse_size, ServerConfig};
+use super::parser::{parse_duration_secs, parse_host, parse_size, ServerConfig};
 use crate::error::{FlashError, Result};
 use std::path::Path;
 
@@ -45,6 +45,13 @@ fn validate_server(cfg: &ServerConfig) -> Result<()> {
     if cfg.server.port == 0 {
         return Err(FlashError::Config("server.port cannot be 0".into()));
     }
+    if parse_host(&cfg.server.host).is_none() {
+        return Err(FlashError::Config(format!(
+            "server.host must be an IP address such as \"0.0.0.0\" (all IPv4), \"::\" \
+             (all IPv4 and IPv6) or \"127.0.0.1\"; got '{}'",
+            cfg.server.host
+        )));
+    }
     if cfg
         .server
         .control_token
@@ -53,6 +60,16 @@ fn validate_server(cfg: &ServerConfig) -> Result<()> {
     {
         return Err(FlashError::Config(
             "server.control_token must be at least 16 printable characters without spaces".into(),
+        ));
+    }
+    if cfg
+        .server
+        .directory_listing_css
+        .as_deref()
+        .is_some_and(|css| css.is_empty() || css.chars().any(char::is_control))
+    {
+        return Err(FlashError::Config(
+            "server.directory_listing_css must be a URL such as \"/assets/listing.css\"".into(),
         ));
     }
     if let Some(workers) = cfg.server.workers {

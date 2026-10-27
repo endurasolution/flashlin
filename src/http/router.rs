@@ -945,6 +945,9 @@ pub(crate) fn merge_vhost(global: &ServerConfig, vhost: &VirtualHostConfig) -> S
     if let Some(ref idx) = vhost.domain.index {
         merged.server.index = Some(idx.clone());
     }
+    if let Some(ref css) = vhost.domain.directory_listing_css {
+        merged.server.directory_listing_css = Some(css.clone());
+    }
     if let Some(ref tls) = vhost.tls {
         merged.tls = Some(tls.clone());
     }

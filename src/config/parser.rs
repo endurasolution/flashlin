@@ -60,6 +60,8 @@ pub struct DomainSection {
     pub index: Option<Vec<String>>,
     /// Name shown in error pages; defaults to `name`.
     pub server_name: Option<String>,
+    /// Overrides `[server].directory_listing_css` for this domain.
+    pub directory_listing_css: Option<String>,
 }
 
 // ─── [server] ───────────────────────────────────────────────────────────────
@@ -123,6 +125,10 @@ pub struct ServerSection {
     /// `Authorization: Bearer <token>`. The CLI reads it from the same file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub control_token: Option<String>,
+    /// Stylesheet linked from directory listings (`directory_listing = true`
+    /// routes), after the built-in styles, e.g. "/assets/listing.css".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directory_listing_css: Option<String>,
 }
 
 fn default_host() -> String {
@@ -518,6 +524,17 @@ pub fn parse_size(s: &str) -> Option<u64> {
     })
     .unwrap_or((s, 1));
     digits.trim().parse::<u64>().ok()?.checked_mul(multiplier)
+}
+
+/// Parse a listen address: an IPv4 or IPv6 literal, optionally in brackets
+/// (`0.0.0.0`, `::`, `[::]`, `127.0.0.1`, `::1`).
+pub fn parse_host(host: &str) -> Option<std::net::IpAddr> {
+    let host = host.trim();
+    host.strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host)
+        .parse()
+        .ok()
 }
 
 /// Parse "30s" / "2m" into seconds.
