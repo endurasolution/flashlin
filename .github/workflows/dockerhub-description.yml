@@ -3,7 +3,7 @@ name: Sync README to Docker Hub
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - README.md        # only runs when README changes
 
