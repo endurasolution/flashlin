@@ -1,6 +1,6 @@
 [package]
 name = "flashlin"
-version = "2.0.0"
+version = "3.0.0"
 edition = "2021"
 description = "FlashLin — Fast, reliable, cached, powerful Rust web server"
 license-file = "license.flashlin"
@@ -98,10 +98,12 @@ dashmap = "5"
 # HTTP date parsing/formatting (ETag / Last-Modified / If-Modified-Since)
 httpdate = "1"
 
+# JSON for the `flashlin apps` control endpoint and CLI
+serde_json = "1"
+
 [dev-dependencies]
 tokio-test = "0.4"
 rcgen = "0.13"
-serde_json = "1"
 
 [profile.release]
 opt-level = 3

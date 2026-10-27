@@ -1,3 +1,4 @@
+mod apps_test;
 mod config_test;
 mod http_live;
 #[cfg(feature = "http3")]

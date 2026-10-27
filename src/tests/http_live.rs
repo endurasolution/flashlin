@@ -15,10 +15,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 async fn request(
     client: &Client<HttpConnector, Full<Bytes>>,
@@ -63,7 +60,7 @@ async fn page_delivery_proxy_pool_streaming_and_websocket_over_tcp() {
         gzip.write_all(b"hello page").unwrap();
         std::fs::write(folder.join("app.txt.gz"), gzip.finish().unwrap()).unwrap();
     }
-    let backend = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let backend = crate::server::net::bind_tcp("127.0.0.1:0").unwrap();
     let backend_addr = backend.local_addr().unwrap();
     let connections = Arc::new(AtomicUsize::new(0));
     let count = connections.clone();
@@ -148,7 +145,7 @@ async fn page_delivery_proxy_pool_streaming_and_websocket_over_tcp() {
     proxy_route.root = None;
     proxy_route.proxy_pass = Some(format!("http://{backend_addr}"));
     cfg.routes.as_mut().unwrap().push(proxy_route);
-    let unavailable = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let unavailable = crate::server::net::bind_tcp("127.0.0.1:0").unwrap();
     let unavailable_addr = unavailable.local_addr().unwrap();
     // Hold the listening port without accepting: a deterministic unresponsive
     // backend, without racing another process for a recently released port.
@@ -172,7 +169,7 @@ async fn page_delivery_proxy_pool_streaming_and_websocket_over_tcp() {
     ];
     cfg.routes.as_mut().unwrap().push(rotating);
     let cfg = Arc::new(cfg);
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = crate::server::net::bind_tcp("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let trigger = Arc::new(crate::server::shutdown::ShutdownTrigger::new());
     let signal = trigger.clone();
@@ -406,7 +403,7 @@ async fn page_delivery_proxy_pool_streaming_and_websocket_over_tcp() {
             expected
         );
     }
-    let mut socket = TcpStream::connect(address).await.unwrap();
+    let mut socket = crate::server::net::connect_tcp(address).await.unwrap();
     socket.write_all(format!("GET /proxy/socket HTTP/1.1\r\nHost: {address}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n").as_bytes()).await.unwrap();
     let mut handshake = Vec::new();
     while !handshake.ends_with(b"\r\n\r\n") {
@@ -428,7 +425,7 @@ async fn page_delivery_proxy_pool_streaming_and_websocket_over_tcp() {
         .unwrap();
     assert_eq!(&echo, b"ping");
     drop(socket);
-    let mut slow = TcpStream::connect(address).await.unwrap();
+    let mut slow = crate::server::net::connect_tcp(address).await.unwrap();
     slow.write_all(b"GET / HTTP/1.1\r\nHost:").await.unwrap();
     let mut error = Vec::new();
     tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut error))

@@ -13,6 +13,11 @@ ExecStart=/usr/local/bin/flashlin /etc/flashlin/server.toml
 Restart=always
 RestartSec=3
 LimitNOFILE=65535
+# Stop signal goes to FlashLin only: it drains connections, then stops its
+# [[apps]] (SIGTERM, then SIGKILL after each app's stop_timeout). Anything
+# still running after TimeoutStopSec is killed by systemd.
+KillMode=mixed
+TimeoutStopSec=60
 
 [Install]
 WantedBy=multi-user.target

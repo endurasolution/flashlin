@@ -6,7 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{error, info, warn};
 
-use super::overload::ConnectionLimiter;
+use super::overload::{ConnectionLimiter, Refused};
 use super::shutdown::{wait_for_ctrl_c, ShutdownTrigger};
 use super::worker::WorkerPool;
 use crate::config::ServerConfig;
@@ -32,13 +32,27 @@ impl FlashLinServer {
         })
     }
 
+    /// Starts the configured `[[apps]]`, serves until shutdown, then stops
+    /// the apps — after connections have drained, so in-flight proxied
+    /// requests can still reach them.
     pub async fn run(self) -> anyhow::Result<()> {
+        let apps = crate::apps::AppManager::start(&self.config.apps);
+        apps.register();
+        let result = self.serve().await;
+        apps.stop().await;
+        result
+    }
+
+    async fn serve(self) -> anyhow::Result<()> {
         if let Some(path) = self.watch_path.clone() {
             tokio::spawn(super::reload::watch(self.live.clone(), path));
             info!("Hot reload enabled; checking configuration every 2 seconds");
         }
         let trigger = Arc::new(ShutdownTrigger::new());
-        let limiter = ConnectionLimiter::new(self.config.server.max_connections);
+        let limiter = ConnectionLimiter::with_per_client(
+            self.config.server.max_connections,
+            self.config.server.max_connections_per_ip,
+        );
         let max = self.config.server.max_connections;
         let draining = limiter.clone();
 
@@ -245,11 +259,14 @@ async fn accept_http_loop(
                         if let Err(error) = stream.set_nodelay(true) {
                             warn!(%error, "Unable to enable TCP_NODELAY");
                         }
-                        match limiter.try_acquire() {
-                            Some(slot) => {
+                        match limiter.try_acquire(remote_addr.ip()) {
+                            Ok(slot) => {
                                 pool.spawn_http(stream, remote_addr, slot, trigger.subscribe());
                             }
-                            None => {
+                            Err(Refused::Client) => {
+                                tracing::debug!(client = %remote_addr, listener = label, "Per-client connection limit reached - closing");
+                            }
+                            Err(Refused::Server) => {
                                 let active = limiter.active();
                                 let cap = limiter.max();
                                 warn!(
@@ -297,8 +314,8 @@ async fn accept_https_loop(
                         if let Err(error) = stream.set_nodelay(true) {
                             warn!(%error, "Unable to enable TCP_NODELAY");
                         }
-                        match limiter.try_acquire() {
-                            Some(slot) => {
+                        match limiter.try_acquire(remote_addr.ip()) {
+                            Ok(slot) => {
                                 let acceptor = acceptor.clone();
                                 let config = Arc::clone(&pool.config);
                                 let shutdown = trigger.subscribe();
@@ -317,7 +334,10 @@ async fn accept_https_loop(
                                     }
                                 });
                             }
-                            None => {
+                            Err(Refused::Client) => {
+                                tracing::debug!(client = %remote_addr, "Per-client connection limit reached on HTTPS listener - closing");
+                            }
+                            Err(Refused::Server) => {
                                 warn!(
                                     active = limiter.active(),
                                     max = limiter.max(),
@@ -355,7 +375,7 @@ async fn accept_redirect_loop(
                         if let Err(error) = stream.set_nodelay(true) {
                             warn!(%error, "Unable to enable TCP_NODELAY");
                         }
-                        if let Some(slot) = limiter.try_acquire() {
+                        if let Ok(slot) = limiter.try_acquire(remote_addr.ip()) {
                             tokio::spawn(async move {
                                 let _ = send_https_redirect(stream).await;
                                 drop(slot);

@@ -3,6 +3,7 @@ pub mod fastpath;
 #[cfg(feature = "http3")]
 pub mod http3;
 pub mod listener;
+pub mod net;
 pub mod overload;
 pub mod shutdown;
 pub mod worker;

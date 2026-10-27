@@ -84,8 +84,8 @@ async fn reload_updates_keepalive_and_rejects_invalid_or_restart_settings() {
         Snapshot::new(Arc::new(load_config(path).unwrap())).unwrap(),
     ));
     let old_state = Arc::downgrade(&live.load().config.state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let socket = tokio::net::TcpStream::connect(listener.local_addr().unwrap())
+    let listener = crate::server::net::bind_tcp("127.0.0.1:0").unwrap();
+    let socket = crate::server::net::connect_tcp(listener.local_addr().unwrap())
         .await
         .unwrap();
     let (server, peer) = listener.accept().await.unwrap();
@@ -254,8 +254,8 @@ async fn acme_loads_cached_certificate_and_serves_verified_tls_offline() {
     let connector = tokio_rustls::TlsConnector::from(Arc::new(client));
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let socket = tokio::net::TcpStream::connect(listener.local_addr().unwrap())
+            let listener = crate::server::net::bind_tcp("127.0.0.1:0").unwrap();
+            let socket = crate::server::net::connect_tcp(listener.local_addr().unwrap())
                 .await
                 .unwrap();
             let (server, _) = listener.accept().await.unwrap();

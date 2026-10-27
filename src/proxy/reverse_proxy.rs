@@ -254,6 +254,7 @@ pub async fn proxy_request(
             }
         });
         let (mut parts, _) = upstream.into_parts();
+        parts.version = hyper::Version::HTTP_11;
         strip_hop_headers(&mut parts.headers);
         parts
             .headers
@@ -264,6 +265,12 @@ pub async fn proxy_request(
         return Response::from_parts(parts, ResponseBody::new(Bytes::new()));
     }
     let (mut parts, body) = upstream.into_parts();
+    // The upstream's HTTP version describes the upstream hop only. Passing an
+    // HTTP/1.0 one on (Python's http.server, some WSGI servers) made Hyper
+    // answer HTTP/1.1 clients with HTTP/1.0, which rules out chunked encoding
+    // and so closed keep-alive connections after streamed bodies. Hyper still
+    // downgrades the response itself for clients that really are HTTP/1.0.
+    parts.version = hyper::Version::HTTP_11;
     strip_hop_headers(&mut parts.headers);
     Response::from_parts(parts, ResponseBody::incoming(body, idle))
 }

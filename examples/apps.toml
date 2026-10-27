@@ -1,0 +1,52 @@
+# FlashLin 3.0 — serve a static site plus a Node.js and a Python app.
+#
+#   flashlin --check examples/apps.toml
+#   flashlin examples/apps.toml
+#   flashlin apps examples/apps.toml
+#
+# Then: http://127.0.0.1:8080/api/hello  (Node, two instances, load-balanced)
+#       http://127.0.0.1:8080/py/hello   (Python)
+# Full guide: docs/APPS.md
+
+[server]
+host = "127.0.0.1"
+port = 8080
+root = "./public"
+# At most 64 simultaneous connections per client IP (IPv6: per /64).
+max_connections_per_ip = 64
+
+[security.rate_limit]
+limit = "600/min"
+burst = 100
+
+[[apps]]
+name         = "node-api"
+runtime      = "node"
+script       = "examples/apps/node-api/server.js"
+port         = 3000
+instances    = 2
+health_check = "/health"
+# Required when FlashLin runs as root (e.g. the production systemd unit):
+# user       = "www-data"
+
+[[apps]]
+name         = "python-api"
+runtime      = "python"
+script       = "examples/apps/python-api/app.py"
+port         = 3100
+health_check = "/health"
+restart      = "on-failure"
+# log_file   = "./logs/python-api.log"
+# user       = "www-data"
+
+[[routes]]
+path = "/"
+root = "./public"
+
+[[routes]]
+path = "/api"
+app  = "node-api"
+
+[[routes]]
+path = "/py"
+app  = "python-api"

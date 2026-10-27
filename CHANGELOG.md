@@ -1,5 +1,96 @@
 # Changelog
 
+## 3.0.0
+
+### Supervised Node.js and Python apps (`[[apps]]`)
+
+- New `[[apps]]` config: FlashLin starts Node.js, Python or any other
+  command with the server, passes it `PORT`/`HOST`, and stops it on shutdown.
+  `runtime = "node" | "python"` picks the interpreter; `command`/`args` run
+  anything else (gunicorn, uvicorn, npm), with `{port}` / `$PORT` substituted.
+- Routes connect with `app = "<name>"`, in `server.toml` or in `domains/*.toml`.
+  At load time this becomes loopback `proxy_pass` / `proxy_upstreams`, so apps
+  get the existing proxy path unchanged: WebSockets, streaming, QUERY,
+  X-Forwarded-*, passive failover.
+- `instances = N` runs N copies on consecutive ports, load-balanced.
+- Crash restarts back off exponentially (0.5 s up to 30 s; a 60 s run resets
+  it). After `max_restarts` consecutive crashes the app is marked `failed`
+  until restarted by hand. `restart = "always" | "on-failure" | "never"`.
+- Optional HTTP health checks restart an app that stops answering, or that
+  doesn't answer within `start_timeout` after starting.
+- Graceful stop: SIGTERM to the app's whole process group, SIGKILL after
+  `stop_timeout`. Apps are stopped after client connections drain.
+- stdout/stderr go to FlashLin's log tagged with the app name, or to `log_file`.
+  Lines are capped at 16 KiB.
+- New CLI: `flashlin apps [config]` (state, pid, port, restarts, health, uptime,
+  last exit) and `flashlin apps restart <name> [config]`.
+- Security: FlashLin refuses to run an app as root unless the entry sets `user`
+  (it switches to that account and drops supplementary groups), or sets
+  `user = "root"` to allow it explicitly. On Linux, apps get SIGTERM if
+  FlashLin itself is killed, instead of being orphaned on their ports.
+- Changing `[[apps]]` requires a restart. `--watch` rejects such reloads and
+  keeps the running config.
+- See [docs/APPS.md](docs/APPS.md) and [examples/apps.toml](examples/apps.toml).
+
+### Security
+
+- **Fixed:** `allow_ips` / `deny_ips` and `.flashweb` access rules did not
+  match IPv4 clients on a dual-stack (`::`) listener, which reports them as
+  `::ffff:a.b.c.d`. A `deny_ips = ["1.2.3.4"]` rule could therefore be
+  bypassed there. Addresses are now canonicalized before matching.
+- Rate limiting groups IPv6 clients by /64, so a client can no longer get a
+  fresh bucket for every address in its own prefix. IPv4-mapped clients share
+  their IPv4 address's bucket.
+- New `server.max_connections_per_ip`: caps simultaneous connections per
+  client (IPv4 address or IPv6 /64), checked at accept before any TLS or HTTP
+  work. Excess connections are closed silently. Default 0 (off).
+- Control endpoints (`/flashlin/*`) now also refuse requests carrying
+  `Forwarded`, `X-Forwarded-For`, `X-Real-IP` or `Via`. Previously a reverse
+  proxy or tunnel on the same host could relay internet traffic to them,
+  because it arrived from loopback. Optional `server.control_token` adds
+  bearer-token authentication (constant-time compare); the CLI sends it
+  automatically.
+- `parse_size` no longer overflows on huge values (`99999999999GB`).
+- The production systemd units (all distros) now set `KillMode=mixed` and
+  `TimeoutStopSec=60`, so FlashLin drains connections and stops its apps in
+  order instead of systemd signalling every process at once.
+
+### Performance
+
+- Virtual hosts: each host's effective config is merged once per config
+  generation instead of deep-cloning the whole server config on every request.
+- Rate limiting is keyed by IP address instead of a string, so it no longer
+  allocates one per request. `parse_size`, which runs twice per request, no
+  longer allocates either.
+
+### Fixes
+
+- Proxied responses always use HTTP/1.1 toward the client. FlashLin used to
+  pass the upstream's HTTP version through, so an HTTP/1.0 backend (Python's
+  `http.server`, some WSGI servers) made it answer HTTP/1.1 clients with
+  HTTP/1.0. That ruled out chunked encoding, so keep-alive connections were
+  closed after streamed bodies. It also meant an unexpected upstream version
+  could reach a panic in Hyper's response encoder; release builds use
+  `panic = "abort"`, so that would have stopped the server.
+- On Windows, sockets created by Tokio are inheritable by child processes.
+  The FastCGI and health-check connections now use non-inheritable sockets,
+  so an app spawned while one is open can't keep it alive or reset it.
+  Listener and proxy sockets were already non-inheritable.
+
+### Known limitations
+
+- Apps on Windows are for development: stopping reaches only the app
+  process, not children it spawned, and if FlashLin is killed abruptly its
+  apps keep running.
+- The Unix-specific app supervision paths (process groups, signals, user
+  switching, parent-death signal) compile for Linux and follow the
+  documented POSIX/Linux semantics. The live tests in this release ran on
+  Windows; run `cargo test` on Linux (the CI matrix includes ubuntu-latest)
+  before deploying.
+- No new nginx comparison benchmark has been run for 3.0. The per-request
+  savings above are allocation and copy removals, not measured throughput
+  gains.
+
 ## 2.0.0
 
 ### Service control commands

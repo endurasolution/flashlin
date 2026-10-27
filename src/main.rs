@@ -1,6 +1,7 @@
 // FlashLin — Fast, Reliable, Cached, Powerful Rust Web Server
-// v2.0.0 — production hardening · per-host state · metrics · static mounts
+// v3.0.0 — supervised Node.js/Python apps · per-client limits · faster vhosts
 
+mod apps;
 mod cache;
 mod cli;
 mod config;
@@ -130,6 +131,11 @@ fn print_help() {
         "  flashlin remove                Stop it and remove the binary + systemd unit",
         "                                 (config, web root and certs are left in place)",
         "",
+        "Manage background apps ([[apps]] in server.toml) of a running server:",
+        "  flashlin apps [config]         List apps with state, pid, port, restarts, health",
+        "  flashlin apps restart <name> [config]",
+        "                                 Gracefully restart every instance of an app",
+        "",
         "Other:",
         "  flashlin --version             Show version and build info (-V)",
         "  flashlin --license             Show the license text",
@@ -208,6 +214,8 @@ fn default_config() -> config::ServerConfig {
             domains_dir: None,
             direct_static_io: false,
             sendfile: false,
+            max_connections_per_ip: 0,
+            control_token: None,
         },
         http3: None,
         tls: None,
@@ -253,9 +261,12 @@ fn default_config() -> config::ServerConfig {
             cache_control: None,
             methods: None,
             directory_listing: false,
+            app: None,
         }]),
         static_dirs: None,
         virtual_hosts: vec![],
+        vhost_index: Default::default(),
+        apps: vec![],
         state: Default::default(),
     }
 }

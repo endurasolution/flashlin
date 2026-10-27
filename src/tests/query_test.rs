@@ -13,10 +13,7 @@ use std::{
         Arc,
     },
 };
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[test]
 fn query_metadata_and_method_tokens_are_validated() {
@@ -98,7 +95,7 @@ async fn query_body_discovery_limits_static_rejection_and_failover() {
     std::fs::create_dir_all(root.join("cors")).unwrap();
     std::fs::write(root.join("index.html"), "must not become a query result").unwrap();
     std::fs::write(root.join("cors/.flashweb"), "[cors]\norigin = 'https://client.example'\nmethods = ['QUERY', 'OPTIONS']\nheaders = ['Content-Type']\n[[header]]\nname = 'Accept-Query'\nvalue = 'application/json'\n").unwrap();
-    let upstream = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let upstream = crate::server::net::bind_tcp("127.0.0.1:0").unwrap();
     let upstream_addr = upstream.local_addr().unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
@@ -184,7 +181,7 @@ async fn query_body_discovery_limits_static_rejection_and_failover() {
     let live = Arc::new(arc_swap::ArcSwap::from_pointee(
         crate::server::reload::Snapshot::new(cfg).unwrap(),
     ));
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = crate::server::net::bind_tcp("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     let trigger = Arc::new(crate::server::shutdown::ShutdownTrigger::new());
     let signal = trigger.clone();
@@ -296,7 +293,7 @@ async fn query_body_discovery_limits_static_rejection_and_failover() {
     );
     assert_eq!(calls.load(Ordering::SeqCst), before + 2);
     // A chunked HTTP/1 body is decoded and forwarded without losing content.
-    let mut socket = TcpStream::connect(addr).await.unwrap();
+    let mut socket = crate::server::net::connect_tcp(addr).await.unwrap();
     socket.write_all(format!("QUERY /query HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n1\r\n{{\r\n1\r\n}}\r\n0\r\n\r\n").as_bytes()).await.unwrap();
     let mut response = Vec::new();
     tokio::time::timeout(

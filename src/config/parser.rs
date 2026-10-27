@@ -21,6 +21,13 @@ pub struct ServerConfig {
     /// Populated at runtime from `server.domains_dir`; not read from server.toml.
     #[serde(skip)]
     pub virtual_hosts: Vec<VirtualHostConfig>,
+    /// Virtual hosts merged with this config once per loaded generation, so
+    /// requests look them up instead of deep-cloning the config each time.
+    #[serde(skip)]
+    pub vhost_index: std::sync::Arc<crate::http::router::VhostIndex>,
+    /// Background applications FlashLin starts, supervises and proxies to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apps: Vec<AppConfig>,
 }
 
 // ─── Virtual host (per-domain .toml) ────────────────────────────────────────
@@ -106,6 +113,16 @@ pub struct ServerSection {
     /// Default: false.
     #[serde(default)]
     pub sendfile: bool,
+    /// Maximum simultaneous connections from one client (IPv4 address or
+    /// IPv6 /64). Excess connections are closed at accept, before any TLS or
+    /// HTTP work. 0 = unlimited (default).
+    #[serde(default)]
+    pub max_connections_per_ip: usize,
+    /// When set, the loopback control endpoints (`/flashlin/...`, used by
+    /// `flashlin purge cache` and `flashlin apps`) also require
+    /// `Authorization: Bearer <token>`. The CLI reads it from the same file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_token: Option<String>,
 }
 
 fn default_host() -> String {
@@ -349,6 +366,10 @@ pub struct RouteConfig {
     pub methods: Option<Vec<String>>,
     #[serde(default)]
     pub directory_listing: bool,
+    /// Name of an `[[apps]]` entry to proxy this route to. Resolved at load
+    /// time into loopback `proxy_pass` / `proxy_upstreams` targets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
 }
 
 // ─── [[static_dirs]] (optional simple static mounts) ───────────────────────
@@ -365,6 +386,99 @@ pub struct StaticDirConfig {
     pub url_path: String,
     pub root: PathBuf,
     pub cache_control: Option<String>,
+}
+
+// ─── [[apps]] ───────────────────────────────────────────────────────────────
+
+/// A background application FlashLin runs and supervises.
+///
+/// ```toml
+/// [[apps]]
+/// name         = "api"
+/// runtime      = "node"          # or "python"; or set `command` instead
+/// script       = "server.js"
+/// cwd          = "/srv/api"
+/// port         = 3000            # passed to the app as $PORT
+/// instances    = 2               # ports 3000 and 3001, load-balanced
+/// health_check = "/health"
+///
+/// [[routes]]
+/// path = "/api"
+/// app  = "api"
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AppConfig {
+    pub name: String,
+    /// Picks the interpreter when `command` is not set.
+    pub runtime: Option<AppRuntime>,
+    /// Program to run; overrides the runtime's interpreter (e.g. a virtualenv's
+    /// python, `gunicorn`, `npm`).
+    pub command: Option<String>,
+    /// Script passed as the first argument (e.g. `server.js`, `app.py`).
+    pub script: Option<String>,
+    /// Further arguments; `{port}` and `$PORT` are replaced with the port.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Working directory (default: FlashLin's).
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    /// Loopback port of the first instance; instance N uses `port + N`.
+    pub port: u16,
+    #[serde(default = "default_instances")]
+    pub instances: u16,
+    #[serde(default)]
+    pub restart: RestartPolicy,
+    /// Consecutive crashes (runs shorter than 60s) before giving up; 0 = never.
+    #[serde(default = "default_max_restarts")]
+    pub max_restarts: u32,
+    /// HTTP path probed on loopback; the app is restarted when it stops answering.
+    pub health_check: Option<String>,
+    #[serde(default = "default_health_interval")]
+    pub health_interval: String,
+    /// How long a new instance may take to pass its first health check.
+    #[serde(default = "default_start_timeout")]
+    pub start_timeout: String,
+    /// Grace period between SIGTERM and SIGKILL when stopping.
+    #[serde(default = "default_stop_timeout")]
+    pub stop_timeout: String,
+    /// Append stdout/stderr here instead of FlashLin's own log.
+    pub log_file: Option<String>,
+    /// Run as this user (Unix, requires FlashLin to start as root).
+    pub user: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AppRuntime {
+    Node,
+    Python,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RestartPolicy {
+    #[default]
+    Always,
+    OnFailure,
+    Never,
+}
+
+fn default_instances() -> u16 {
+    1
+}
+fn default_max_restarts() -> u32 {
+    10
+}
+fn default_health_interval() -> String {
+    "10s".into()
+}
+fn default_start_timeout() -> String {
+    "30s".into()
+}
+fn default_stop_timeout() -> String {
+    "10s".into()
 }
 
 // ─── [logging] ──────────────────────────────────────────────────────────────
@@ -386,19 +500,24 @@ fn default_log_level() -> String {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /// Parse a human-readable size string like "20MB", "32KB", "1GB" into bytes.
+///
+/// Runs on the request path, so it neither allocates nor overflows.
 pub fn parse_size(s: &str) -> Option<u64> {
-    let s = s.trim().to_uppercase();
-    if let Some(n) = s.strip_suffix("GB") {
-        n.trim().parse::<u64>().ok().map(|v| v * 1024 * 1024 * 1024)
-    } else if let Some(n) = s.strip_suffix("MB") {
-        n.trim().parse::<u64>().ok().map(|v| v * 1024 * 1024)
-    } else if let Some(n) = s.strip_suffix("KB") {
-        n.trim().parse::<u64>().ok().map(|v| v * 1024)
-    } else if let Some(n) = s.strip_suffix('B') {
-        n.trim().parse::<u64>().ok()
-    } else {
-        s.parse::<u64>().ok()
-    }
+    let s = s.trim();
+    let (digits, multiplier) = [
+        ("GB", 1u64 << 30),
+        ("MB", 1 << 20),
+        ("KB", 1 << 10),
+        ("B", 1),
+    ]
+    .into_iter()
+    .find_map(|(suffix, multiplier)| {
+        let split = s.len().checked_sub(suffix.len())?;
+        (s.is_char_boundary(split) && s[split..].eq_ignore_ascii_case(suffix))
+            .then(|| (&s[..split], multiplier))
+    })
+    .unwrap_or((s, 1));
+    digits.trim().parse::<u64>().ok()?.checked_mul(multiplier)
 }
 
 /// Parse "30s" / "2m" into seconds.

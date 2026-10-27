@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 use super::errors::PhpError;
@@ -173,7 +172,7 @@ pub async fn send_fastcgi_request(
     body: &[u8],
     timeout_secs: u64,
 ) -> Result<FastCgiResponse, PhpError> {
-    let connect = TcpStream::connect(address);
+    let connect = crate::server::net::connect_tcp(address);
     let mut stream = timeout(Duration::from_secs(timeout_secs), connect)
         .await
         .map_err(|_| PhpError::Timeout)?

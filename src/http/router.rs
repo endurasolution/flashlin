@@ -56,10 +56,44 @@ impl HostStates {
 static METRICS: OnceLock<Arc<crate::metrics::prometheus::Metrics>> = OnceLock::new();
 static REQUEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-fn host_key<B>(req: &Request<B>, config: &ServerConfig) -> std::borrow::Cow<'static, str> {
-    // Single-host servers need neither authority parsing nor an owned key.
+/// Virtual hosts merged with the global config, keyed by lowercase hostname
+/// (name and aliases). Built once per config generation by
+/// [`build_vhost_index`]; merging on every request deep-cloned the whole config.
+#[derive(Default)]
+pub struct VhostIndex(std::collections::HashMap<String, (Arc<str>, Arc<ServerConfig>)>);
+
+impl std::fmt::Debug for VhostIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(self.0.keys()).finish()
+    }
+}
+
+/// Precomputes every virtual host's merged config. The merged configs share
+/// this generation's `state` and hold an empty index themselves, so there is
+/// no reference cycle between a config and its index.
+pub fn build_vhost_index(config: &mut ServerConfig) {
+    let mut index = std::collections::HashMap::new();
+    for vhost in &config.virtual_hosts {
+        let key: Arc<str> = format!("vhost:{}", vhost.domain.name.to_ascii_lowercase()).into();
+        let merged = Arc::new(merge_vhost(config, vhost));
+        for name in std::iter::once(&vhost.domain.name).chain(&vhost.domain.aliases) {
+            index
+                .entry(name.to_ascii_lowercase())
+                .or_insert_with(|| (key.clone(), merged.clone()));
+        }
+    }
+    config.vhost_index = Arc::new(VhostIndex(index));
+}
+
+/// Selects the virtual host for a request: its state key (for per-host cache
+/// and rate-limit state) and its effective config.
+fn resolve_host<B>(
+    req: &Request<B>,
+    config: &Arc<ServerConfig>,
+) -> (Option<Arc<str>>, Arc<ServerConfig>) {
+    // Single-host servers need neither authority parsing nor a lookup.
     if config.virtual_hosts.is_empty() {
-        return std::borrow::Cow::Borrowed("default");
+        return (None, Arc::clone(config));
     }
     let authority = req
         .uri()
@@ -72,6 +106,13 @@ fn host_key<B>(req: &Request<B>, config: &ServerConfig) -> std::borrow::Cow<'sta
         .ok()
         .map(|a| a.host().to_ascii_lowercase())
         .unwrap_or_default();
+    if host.is_empty() {
+        return (None, Arc::clone(config));
+    }
+    if let Some((key, merged)) = config.vhost_index.0.get(&host) {
+        return (Some(key.clone()), merged.clone());
+    }
+    // Configs built without load_config (tests, embedders) have no index.
     config
         .virtual_hosts
         .iter()
@@ -83,8 +124,13 @@ fn host_key<B>(req: &Request<B>, config: &ServerConfig) -> std::borrow::Cow<'sta
                     .iter()
                     .any(|a| a.eq_ignore_ascii_case(&host))
         })
-        .map(|vh| std::borrow::Cow::Owned(format!("vhost:{}", vh.domain.name.to_ascii_lowercase())))
-        .unwrap_or(std::borrow::Cow::Borrowed("default"))
+        .map(|vh| {
+            (
+                Some(format!("vhost:{}", vh.domain.name.to_ascii_lowercase()).into()),
+                Arc::new(merge_vhost(config, vh)),
+            )
+        })
+        .unwrap_or_else(|| (None, Arc::clone(config)))
 }
 
 fn get_cache(config: &ServerConfig, key: &str) -> Arc<ResponseCache> {
@@ -150,8 +196,8 @@ where
     // this level. A process-local counter correlates log lines just as well.
     let request_id = REQUEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    let state_key = host_key(&req, &config);
-    let config = resolve_vhost(&req, &config);
+    let (host_key, config) = resolve_host(&req, &config);
+    let state_key = host_key.as_deref().unwrap_or("default");
     let server_name = &config.server.server_name;
 
     // Security: IP access control
@@ -168,7 +214,7 @@ where
         .as_ref()
         .and_then(|s| s.rate_limit.as_ref())
         .is_some()
-        && !get_rate_limiter(&config, &state_key).check(&remote_addr.ip().to_string())
+        && !get_rate_limiter(&config, state_key).check(remote_addr.ip())
     {
         warn!(request_id = request_id, ip = %remote_addr, "Rate limit exceeded");
         return error_429();
@@ -212,7 +258,7 @@ where
     // Keep the endpoint intentionally small and dependency-free.  It is useful
     // both for Prometheus scraping and inexpensive liveness monitoring.
     if parsed.path == "/metrics" && method == Method::GET {
-        if !remote_addr.ip().is_loopback() {
+        if !remote_addr.ip().to_canonical().is_loopback() {
             return error_403(server_name);
         }
         return Response::builder()
@@ -222,21 +268,12 @@ where
             .unwrap_or_else(|_| error_500(server_name));
     }
 
-    // Loopback-only control endpoint backing `flashlin purge cache`. Clears
-    // every in-memory response cache this process holds (default host and
-    // every virtual host); does not touch files on disk or other processes.
-    if parsed.path == "/flashlin/purge-cache" && method == Method::POST {
-        if !remote_addr.ip().is_loopback() {
-            return error_403(server_name);
+    // Loopback-only control endpoints backing `flashlin purge cache` and
+    // `flashlin apps`.
+    if let Some(action) = parsed.path.strip_prefix("/flashlin/") {
+        if let Some(response) = control_endpoint(action, &method, &parsed, remote_addr, &config) {
+            return response;
         }
-        let removed = config.state.clear_all_caches();
-        return Response::builder()
-            .status(200)
-            .header("content-type", "text/plain; charset=utf-8")
-            .body(ResponseBody::new(Bytes::from(format!(
-                "purged {removed} cache entries\n"
-            ))))
-            .unwrap_or_else(|_| error_500(server_name));
     }
 
     // Security: block dotfiles and sensitive paths
@@ -276,6 +313,7 @@ where
         cache_control: dir.cache_control.clone(),
         methods: None,
         directory_listing: false,
+        app: None,
     });
     if let Some(dir) = static_dir {
         parsed.path = static_relative_path(&request_path, &dir.url_path);
@@ -381,7 +419,7 @@ where
 
     // =========================================================================
 
-    let cache = get_cache(&config, &state_key);
+    let cache = get_cache(&config, state_key);
     let mut response =
         route_to_handler(&parsed, &parsed.headers, &method, route, &config, &cache).await;
 
@@ -444,6 +482,107 @@ where
     );
 
     response
+}
+
+// ---------------------------------------------------------------------------
+// Control endpoints
+// ---------------------------------------------------------------------------
+
+/// The app name in `apps/<name>/restart`.
+fn restart_target(action: &str) -> Option<&str> {
+    action
+        .strip_prefix("apps/")?
+        .strip_suffix("/restart")
+        .filter(|name| !name.is_empty() && !name.contains('/'))
+}
+
+/// Handles `/flashlin/<action>`; `None` lets unknown paths fall through to
+/// normal routing.
+///
+/// Every control request must come from loopback, must not carry headers a
+/// proxy adds (a reverse proxy on the same host would otherwise make internet
+/// traffic look local), and must present `server.control_token` when one is set.
+fn control_endpoint(
+    action: &str,
+    method: &Method,
+    req: &ParsedRequest,
+    remote_addr: SocketAddr,
+    config: &ServerConfig,
+) -> Option<Response<ResponseBody>> {
+    let restart = restart_target(action);
+    let known = match *method {
+        Method::POST => action == "purge-cache" || restart.is_some(),
+        Method::GET => action == "apps",
+        _ => false,
+    };
+    if !known {
+        return None;
+    }
+    let server_name = &config.server.server_name;
+    if !control_allowed(remote_addr, &req.headers, config) {
+        warn!(ip = %remote_addr, path = %req.path, "Control request refused");
+        return Some(error_403(server_name));
+    }
+    let respond = |status: u16, content_type: &'static str, body: Vec<u8>| {
+        Response::builder()
+            .status(status)
+            .header("content-type", content_type)
+            .header("cache-control", "no-store")
+            .body(ResponseBody::new(Bytes::from(body)))
+            .unwrap_or_else(|_| error_500(server_name))
+    };
+    let text =
+        |status: u16, body: String| respond(status, "text/plain; charset=utf-8", body.into());
+    if action == "purge-cache" {
+        // Clears every in-memory response cache this process holds (default
+        // host and every virtual host); does not touch files on disk.
+        let removed = config.state.clear_all_caches();
+        return Some(text(200, format!("purged {removed} cache entries\n")));
+    }
+    let Some(manager) = crate::apps::current() else {
+        return Some(text(
+            404,
+            "no [[apps]] are configured on this server\n".into(),
+        ));
+    };
+    let Some(name) = restart else {
+        let body = serde_json::to_vec(&manager.status()).unwrap_or_default();
+        return Some(respond(200, "application/json", body));
+    };
+    Some(if manager.restart(name) {
+        info!(app = name, "App restart requested via control endpoint");
+        text(200, format!("restarting {name}\n"))
+    } else {
+        text(404, format!("no app named '{name}'\n"))
+    })
+}
+
+pub(crate) fn control_allowed(
+    remote_addr: SocketAddr,
+    headers: &hyper::HeaderMap,
+    config: &ServerConfig,
+) -> bool {
+    if !remote_addr.ip().to_canonical().is_loopback() {
+        return false;
+    }
+    if ["forwarded", "x-forwarded-for", "x-real-ip", "via"]
+        .iter()
+        .any(|name| headers.contains_key(*name))
+    {
+        return false;
+    }
+    match config.server.control_token.as_deref() {
+        None => true,
+        Some(token) => headers
+            .get(hyper::header::AUTHORIZATION)
+            .and_then(|v| v.as_bytes().strip_prefix(b"Bearer "))
+            .is_some_and(|given| constant_time_eq(given, token.as_bytes())),
+    }
+}
+
+/// Compares without an early exit on the first differing byte.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 // ---------------------------------------------------------------------------
@@ -789,44 +928,12 @@ fn should_dispatch_to_php(path: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Virtual host resolution
+// Virtual host merging
 // ---------------------------------------------------------------------------
-
-fn resolve_vhost<B>(req: &Request<B>, config: &Arc<ServerConfig>) -> Arc<ServerConfig> {
-    if config.virtual_hosts.is_empty() {
-        return Arc::clone(config);
-    }
-    let authority = req
-        .uri()
-        .authority()
-        .map(|a| a.as_str())
-        .or_else(|| req.headers().get("host").and_then(|v| v.to_str().ok()))
-        .unwrap_or("");
-    let host = authority
-        .parse::<::http::uri::Authority>()
-        .ok()
-        .map(|a| a.host().to_ascii_lowercase())
-        .unwrap_or_default();
-    if host.is_empty() {
-        return Arc::clone(config);
-    }
-    config
-        .virtual_hosts
-        .iter()
-        .find(|vh| {
-            vh.domain.name.eq_ignore_ascii_case(&host)
-                || vh
-                    .domain
-                    .aliases
-                    .iter()
-                    .any(|a| a.eq_ignore_ascii_case(&host))
-        })
-        .map(|vhost| Arc::new(merge_vhost(config, vhost)))
-        .unwrap_or_else(|| Arc::clone(config))
-}
 
 pub(crate) fn merge_vhost(global: &ServerConfig, vhost: &VirtualHostConfig) -> ServerConfig {
     let mut merged = global.clone();
+    merged.vhost_index = Default::default();
     merged.server.server_name = vhost
         .domain
         .server_name
