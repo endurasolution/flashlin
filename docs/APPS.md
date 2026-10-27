@@ -56,7 +56,14 @@ const express = require("express");
 const app = express();
 app.get("/health", (req, res) => res.send("ok"));
 app.get("/api/hello", (req, res) => res.json({ hello: "world" }));
-app.listen(process.env.PORT, process.env.HOST);
+const server = app.listen(process.env.PORT, process.env.HOST);
+
+// Stop promptly on FlashLin's SIGTERM. FlashLin's proxy keeps idle
+// keep-alive connections open, and server.close() alone waits ~5 s for them.
+process.on("SIGTERM", () => {
+  server.close(() => process.exit(0));
+  server.closeIdleConnections();
+});
 ```
 
 ```toml

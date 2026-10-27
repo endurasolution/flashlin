@@ -23,4 +23,10 @@ server.listen(Number(process.env.PORT), process.env.HOST, () => {
 });
 
 // FlashLin sends SIGTERM on stop/restart; finish in-flight requests first.
-process.on("SIGTERM", () => server.close(() => process.exit(0)));
+// FlashLin's proxy keeps idle keep-alive connections open to the app, and
+// server.close() alone waits for those to time out (5 s by default), so close
+// them right away.
+process.on("SIGTERM", () => {
+  server.close(() => process.exit(0));
+  server.closeIdleConnections();
+});
