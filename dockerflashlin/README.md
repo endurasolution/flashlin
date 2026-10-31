@@ -12,7 +12,7 @@
 
 Fast, Cached, and Powerful Rust Web Server — container-ready with HTTP/3, automatic HTTPS, TLS, reverse proxy, caching, compression, PHP-FPM, and supervised Node.js / Python apps.
 
-[![FlashLin](https://img.shields.io/badge/FlashLin-v3.0.0-00d2d2?style=for-the-badge)](https://www.flashlin.com/)
+[![FlashLin](https://img.shields.io/badge/FlashLin-v3.1.0-00d2d2?style=for-the-badge)](https://www.flashlin.com/)
 [![Docker Pulls](https://img.shields.io/docker/pulls/endurasolution/flashlin?style=for-the-badge&logo=docker)](https://hub.docker.com/r/endurasolution/flashlin)
 [![Rust](https://img.shields.io/badge/Rust-Tokio%20%2B%20Hyper-orange?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
 [![HTTP/3](https://img.shields.io/badge/HTTP%2F3-QUIC-7B42BC?style=for-the-badge)](https://www.flashlin.com/docs)
@@ -51,7 +51,15 @@ It provides a production-oriented container environment for static websites, HTT
 - 🧹 In-container cache purge via `flashlin purge cache`, and app control via `flashlin apps` (loopback HTTP, works through `docker exec`)
 - 🐳 Four ready-made Compose modes: static HTTP, static HTTPS, PHP HTTP, PHP HTTPS
 
-### 🆕 New in 3.0
+### 🆕 New in 3.1
+
+| Feature | Notes |
+|---|---|
+| RealWeb realtime hub | `[realweb]` in `server.toml`: browsers connect to FlashLin over WebSocket (`realweb.v1`); your app signs a JWT per user and publishes with `POST /flashlin/realweb/publish`. Signed expiring tokens, Origin checks, per-channel permissions, resume after reconnect, acknowledged publishes, presence, heartbeats, slow-client and flood limits. JS client served at `/realweb/client.js`. [Guide](https://github.com/endurasolution/flashlin/blob/master/docs/REALWEB.md) |
+| `flashlin realweb` | `token`, `publish` and `status` subcommands, through `docker exec` |
+| WebSocket proxy | Unchanged: upgrades are still forwarded to your backend through `proxy_pass` / `app` |
+
+### Added in 3.0
 
 | Feature | Notes |
 |---|---|
@@ -94,6 +102,7 @@ flashlin/
 │   ├── static_files/            # File serving, ETag, cache headers, path security
 │   ├── php/                     # PHP-FPM + FastCGI protocol implementation
 │   ├── proxy/                   # Reverse proxy + upstream management
+│   ├── realweb/                 # RealWeb realtime hub + JS client
 │   ├── tls/                     # rustls config + certificate loader
 │   ├── security/                # Rate limiter, IP ACL, security headers
 │   ├── middleware/               # Compression, request-ID, access logging
@@ -121,12 +130,12 @@ Building the image (below) needs the **repository root** as its build context, n
 ## Docker image
 
 ```bash
-docker pull endurasolution/flashlin:3.0.0
+docker pull endurasolution/flashlin:3.1.0
 ```
 
-Also available as `endurasolution/flashlin:3.0` and `endurasolution/flashlin:latest`. Pin to the full
-`3.0.0` tag for anything you deploy — `latest` will move. Currently published for **linux/amd64**.
-The previous release stays available as `2.0.0`.
+Also available as `endurasolution/flashlin:3.1`, `endurasolution/flashlin:3` and `endurasolution/flashlin:latest`. Pin to the full
+`3.1.0` tag for anything you deploy — `latest` will move. Currently published for **linux/amd64**.
+Previous releases stay available as `3.0.0` and `2.0.0`.
 
 ---
 
@@ -181,7 +190,7 @@ dockerflashlin/
 ### Plain `docker run`
 
 ```bash
-docker run -d --name flashlin -p 80:80 endurasolution/flashlin:3.0.0
+docker run -d --name flashlin -p 80:80 endurasolution/flashlin:3.1.0
 ```
 
 Open `http://localhost`. Then:
@@ -217,7 +226,7 @@ docker compose down
 ```yaml
 services:
   flashlin:
-    image: endurasolution/flashlin:3.0.0
+    image: endurasolution/flashlin:3.1.0
     container_name: flashlin
     restart: unless-stopped
     ports:
@@ -346,7 +355,7 @@ The published image contains only FlashLin, so add the runtime your app needs:
 
 ```dockerfile
 # Dockerfile
-FROM endurasolution/flashlin:3.0.0
+FROM endurasolution/flashlin:3.1.0
 
 USER root
 RUN apt-get update \
@@ -433,7 +442,7 @@ docker run -d \
   -v /path/to/server.toml:/etc/flashlin/server.toml:ro \
   -v /path/to/site:/var/www/html:ro \
   -v /path/to/certs:/etc/flashlin/certs:ro \
-  endurasolution/flashlin:3.0.0
+  endurasolution/flashlin:3.1.0
 ```
 
 ### Container paths
@@ -507,7 +516,7 @@ docker compose down
 docker compose down -v
 
 # Update to a newer image
-docker pull endurasolution/flashlin:3.0.0
+docker pull endurasolution/flashlin:3.1.0
 docker compose down && docker compose up -d
 ```
 
@@ -531,7 +540,7 @@ process itself.
       connection limits key on the source address, and some setups (e.g. Docker Desktop) show every
       client as the gateway address
 - [ ] Automate certificate renewal (a cron job/systemd timer, or FlashLin's own ACME client)
-- [ ] Pin the image tag (`3.0.0`) rather than tracking `latest`
+- [ ] Pin the image tag (`3.1.0`) rather than tracking `latest`
 - [ ] Running apps? Set `stop_grace_period` (Compose) or `docker stop -t` to at least your apps' `stop_timeout`
 - [ ] Back up mounted config and certs outside the container
 

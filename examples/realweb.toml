@@ -1,0 +1,41 @@
+# RealWeb demo — live chat plus a server-pushed clock, all through FlashLin.
+#
+#   flashlin --check examples/realweb.toml
+#   flashlin examples/realweb.toml
+#
+# Then open http://127.0.0.1:8080/ in two browser windows.
+#   - FlashLin serves the page and the RealWeb client (/realweb/client.js)
+#   - FlashLin runs the Node app, which mints tokens at /api/realweb-token
+#     and publishes the clock with one HTTP call per tick
+#   - FlashLin's hub carries every realtime message
+# Full guide: docs/REALWEB.md
+
+[server]
+host = "127.0.0.1"
+port = 8080
+root = "./examples/realweb/public"
+
+[realweb]
+enabled = true
+path    = "/realweb"
+# Shared with the app below so it can sign tokens. Use your own long random
+# value in production, e.g.: openssl rand -base64 48
+secret  = "demo-only-secret-change-me-0123456789abcdef"
+# Anyone may read these without a token; publishing always needs one.
+public_channels = ["news/*"]
+history         = 200       # messages per channel kept for reconnecting clients
+history_ttl     = "10m"
+
+[[apps]]
+name         = "realweb-demo"
+runtime      = "node"
+script       = "examples/realweb/app/server.js"
+port         = 3200
+health_check = "/health"
+env          = { REALWEB_SECRET = "demo-only-secret-change-me-0123456789abcdef", FLASHLIN_URL = "http://127.0.0.1:8080" }
+# Required when FlashLin runs as root (e.g. the production systemd unit):
+# user       = "www-data"
+
+[[routes]]
+path = "/api"
+app  = "realweb-demo"

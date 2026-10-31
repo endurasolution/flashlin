@@ -36,6 +36,7 @@ mod tests {
             virtual_hosts: vec![],
             vhost_index: Default::default(),
             apps: vec![],
+            realweb: None,
             state: Default::default(),
         })
     }

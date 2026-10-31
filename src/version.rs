@@ -1,5 +1,5 @@
-pub const FLASHLIN_VERSION_CODE: &str = "FL-3.0.0-20261027";
-pub const FLASHLIN_RELEASE_DATE: &str = "2026-10-27";
+pub const FLASHLIN_VERSION_CODE: &str = "FL-3.1.0-20261031";
+pub const FLASHLIN_RELEASE_DATE: &str = "2026-10-31";
 pub const FLASHLIN_LICENSE_VERSION: &str = "CC-BY-NC-4.0";
 pub const FLASHLIN_LICENSE_TYPE: &str =
     "Creative Commons Attribution-NonCommercial 4.0 International";

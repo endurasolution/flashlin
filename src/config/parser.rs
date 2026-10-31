@@ -28,6 +28,9 @@ pub struct ServerConfig {
     /// Background applications FlashLin starts, supervises and proxies to.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub apps: Vec<AppConfig>,
+    /// Built-in RealWeb realtime hub (see `docs/REALWEB.md`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub realweb: Option<RealWebConfig>,
 }
 
 // ─── Virtual host (per-domain .toml) ────────────────────────────────────────
@@ -485,6 +488,90 @@ fn default_start_timeout() -> String {
 }
 fn default_stop_timeout() -> String {
     "10s".into()
+}
+
+// ─── [realweb] ──────────────────────────────────────────────────────────────
+
+/// FlashLin's built-in realtime hub: authenticated pub/sub channels over a
+/// WebSocket connection with resume, acks and heartbeats.
+///
+/// ```toml
+/// [realweb]
+/// enabled         = true
+/// path            = "/realweb"
+/// secret          = "at least 32 random characters, shared with your app"
+/// allowed_origins = ["https://example.com"]
+/// public_channels = ["news/*"]
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RealWebConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Endpoint clients connect to; `<path>/client.js` serves the JS client.
+    #[serde(default = "default_realweb_path")]
+    pub path: String,
+    /// HS256 key used to verify client tokens (JWTs minted by your app).
+    pub secret: Option<String>,
+    /// Origins browsers may connect from. Empty = the request's own host only;
+    /// `"*"` = any. Clients that send no Origin (servers, apps) are allowed.
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
+    /// Channel patterns anyone may subscribe to without a token (read only).
+    #[serde(default)]
+    pub public_channels: Vec<String>,
+    #[serde(default = "default_realweb_connections")]
+    pub max_connections: usize,
+    /// Largest message a client may send, e.g. "64KB".
+    #[serde(default = "default_realweb_message_size")]
+    pub max_message_size: String,
+    /// Channels one connection may subscribe to at once.
+    #[serde(default = "default_realweb_channels")]
+    pub max_channels: usize,
+    /// Messages retained per channel so reconnecting clients can catch up.
+    #[serde(default = "default_realweb_history")]
+    pub history: usize,
+    /// How long retained messages stay available for catch-up.
+    #[serde(default = "default_realweb_history_ttl")]
+    pub history_ttl: String,
+    /// Messages one connection may send per second (burst: twice this).
+    #[serde(default = "default_realweb_rate")]
+    pub messages_per_second: u32,
+    /// Ping interval; a client silent for two intervals is disconnected.
+    #[serde(default = "default_realweb_heartbeat")]
+    pub heartbeat: String,
+    /// Outgoing messages buffered per connection before it counts as too slow
+    /// and is disconnected (so one stalled client cannot grow server memory).
+    #[serde(default = "default_realweb_send_queue")]
+    pub send_queue: usize,
+}
+
+fn default_realweb_path() -> String {
+    "/realweb".into()
+}
+fn default_realweb_connections() -> usize {
+    10_000
+}
+fn default_realweb_message_size() -> String {
+    "64KB".into()
+}
+fn default_realweb_channels() -> usize {
+    100
+}
+fn default_realweb_history() -> usize {
+    100
+}
+fn default_realweb_history_ttl() -> String {
+    "5m".into()
+}
+fn default_realweb_rate() -> u32 {
+    50
+}
+fn default_realweb_heartbeat() -> String {
+    "25s".into()
+}
+fn default_realweb_send_queue() -> usize {
+    1024
 }
 
 // ─── [logging] ──────────────────────────────────────────────────────────────

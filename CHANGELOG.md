@@ -1,5 +1,39 @@
 # Changelog
 
+## 3.1.0
+
+### RealWeb realtime hub (`[realweb]`)
+
+- New built-in realtime hub. Browsers and apps connect to FlashLin over a
+  WebSocket with subprotocol `realweb.v1`; FlashLin terminates the connection
+  itself, so backends need no socket code. Guide: docs/REALWEB.md.
+- Security: HS256 JWT tokens (standard, mint with any JWT library) sent in the
+  first frame, never the URL; `exp` required, only HS256 accepted, 30 s skew.
+  Origin checked at the handshake (same host by default, or
+  `allowed_origins`). Per-channel subscribe/publish permissions from the token;
+  `public_channels` readable anonymously. Connections close when their token
+  expires unless refreshed with `{"t":"auth"}`; a refresh can narrow rights.
+- Channels multiplexed over one connection, with per-channel sequence
+  numbers, in-memory history (`history`, `history_ttl`, 1 MiB per channel)
+  and resume via `since`/`epoch`; `gap: true` tells a client it missed data.
+- Acknowledged publishes, presence (`count`, `users`), heartbeats in both
+  directions.
+- Limits: `max_connections`, `max_message_size`, `max_channels`,
+  `messages_per_second` (refuses, then closes floods), and a bounded
+  `send_queue` that disconnects stalled consumers. Abusive connections are
+  closed with a lingering close so clients receive the close reason.
+- Fan-out serializes each message once and shares it among subscriber queues;
+  queued messages are written in batches with one flush.
+- `POST /flashlin/realweb/publish` and `GET /flashlin/realweb` loopback
+  control endpoints (same protection as `/flashlin/apps`), RealWeb counters
+  on `/metrics`, and CLI `flashlin realweb token | publish | status`.
+- Dependency-free JS client served at `<path>/client.js`: reconnect with
+  backoff and jitter, resume without duplicates, token refresh, client-side
+  heartbeat watchdog, queued publishes while offline.
+- Example: `examples/realweb.toml` (chat page plus a supervised Node app that
+  mints tokens and pushes a clock).
+- Plain WebSocket proxying is unchanged.
+
 ## 3.0.0
 
 ### Supervised Node.js and Python apps (`[[apps]]`)

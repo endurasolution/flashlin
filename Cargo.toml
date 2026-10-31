@@ -1,6 +1,6 @@
 [package]
 name = "flashlin"
-version = "3.0.0"
+version = "3.1.0"
 edition = "2021"
 description = "FlashLin — Fast, reliable, cached, powerful Rust web server"
 license-file = "license.flashlin"
@@ -99,7 +99,12 @@ dashmap = "5"
 httpdate = "1"
 
 # JSON for the `flashlin apps` control endpoint and CLI
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
+
+# RealWeb: WebSocket framing (the transport) and HS256 ticket signing
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+hmac = "0.12"
+base64 = "0.22"
 
 [dev-dependencies]
 tokio-test = "0.4"

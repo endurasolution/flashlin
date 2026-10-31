@@ -14,6 +14,7 @@ mod metrics;
 mod middleware;
 mod php;
 mod proxy;
+mod realweb;
 mod security;
 mod server;
 mod static_files;
@@ -135,6 +136,14 @@ fn print_help() {
         "  flashlin apps [config]         List apps with state, pid, port, restarts, health",
         "  flashlin apps restart <name> [config]",
         "                                 Gracefully restart every instance of an app",
+        "",
+        "RealWeb realtime hub ([realweb] in server.toml):",
+        "  flashlin realweb token [--user ID] [--subscribe P]... [--publish P]... [--ttl 1h] [config]",
+        "                                 Sign a client token with realweb.secret",
+        "  flashlin realweb publish <channel> <json> [config]",
+        "                                 Publish a message to a channel of a running server",
+        "  flashlin realweb status [config]",
+        "                                 Show connections, channels and message counts",
         "",
         "Other:",
         "  flashlin --version             Show version and build info (-V)",
@@ -268,6 +277,7 @@ fn default_config() -> config::ServerConfig {
         virtual_hosts: vec![],
         vhost_index: Default::default(),
         apps: vec![],
+        realweb: None,
         state: Default::default(),
     }
 }

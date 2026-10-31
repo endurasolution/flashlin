@@ -264,7 +264,9 @@ where
         return Response::builder()
             .status(200)
             .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
-            .body(ResponseBody::new(Bytes::from(metrics().render())))
+            .body(ResponseBody::new(Bytes::from(
+                metrics().render() + &crate::realweb::hub().render_metrics(),
+            )))
             .unwrap_or_else(|_| error_500(server_name));
     }
 
@@ -272,6 +274,15 @@ where
     // `flashlin apps`.
     if let Some(action) = parsed.path.strip_prefix("/flashlin/") {
         if let Some(response) = control_endpoint(action, &method, &parsed, remote_addr, &config) {
+            return response;
+        }
+    }
+
+    // RealWeb endpoint and its client script, ahead of route matching.
+    if let Some(rw) = config.realweb.as_ref().filter(|rw| rw.enabled) {
+        if let Some(response) =
+            crate::realweb::handle(&parsed, &method, rw, remote_addr, &config).await
+        {
             return response;
         }
     }
@@ -511,8 +522,10 @@ fn control_endpoint(
 ) -> Option<Response<ResponseBody>> {
     let restart = restart_target(action);
     let known = match *method {
-        Method::POST => action == "purge-cache" || restart.is_some(),
-        Method::GET => action == "apps",
+        Method::POST => {
+            action == "purge-cache" || action == "realweb/publish" || restart.is_some()
+        }
+        Method::GET => action == "apps" || action == "realweb",
         _ => false,
     };
     if !known {
@@ -538,6 +551,19 @@ fn control_endpoint(
         // host and every virtual host); does not touch files on disk.
         let removed = config.state.clear_all_caches();
         return Some(text(200, format!("purged {removed} cache entries\n")));
+    }
+    if action.starts_with("realweb") {
+        let (status, body) = if *method == Method::POST {
+            crate::realweb::control_publish(&req.body, config)
+        } else {
+            crate::realweb::control_stats(config)
+        };
+        let content_type = if status == 200 {
+            "application/json"
+        } else {
+            "text/plain; charset=utf-8"
+        };
+        return Some(respond(status, content_type, body.into()));
     }
     let Some(manager) = crate::apps::current() else {
         return Some(text(

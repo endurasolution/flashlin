@@ -17,6 +17,72 @@ pub fn validate(cfg: &ServerConfig) -> Result<()> {
     validate_php(cfg)?;
     validate_routes(cfg)?;
     validate_apps(cfg)?;
+    validate_realweb(cfg)?;
+    Ok(())
+}
+
+fn validate_realweb(cfg: &ServerConfig) -> Result<()> {
+    let Some(rw) = cfg.realweb.as_ref().filter(|rw| rw.enabled) else {
+        return Ok(());
+    };
+    let err = |msg: &str| Err(FlashError::Config(format!("realweb: {msg}")));
+    if !rw.path.starts_with('/')
+        || rw.path.len() < 2
+        || rw.path.ends_with('/')
+        || rw.path.starts_with("/flashlin")
+        || !rw
+            .path
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/-_.".contains(&b))
+    {
+        return err("path must look like \"/realweb\" (no trailing slash, not under /flashlin)");
+    }
+    match rw.secret.as_deref() {
+        Some(secret) if secret.len() < 32 => {
+            return err("secret must be at least 32 characters");
+        }
+        None if rw.public_channels.is_empty() => {
+            return err("set a secret (for tokens) or public_channels, or nothing can connect");
+        }
+        _ => {}
+    }
+    if let Some(bad) = rw
+        .public_channels
+        .iter()
+        .find(|p| !crate::realweb::valid_pattern(p))
+    {
+        return err(&format!("invalid channel pattern '{bad}'"));
+    }
+    if rw
+        .allowed_origins
+        .iter()
+        .any(|o| o != "*" && !(o.starts_with("http://") || o.starts_with("https://")))
+    {
+        return err("allowed_origins entries must be \"*\" or like \"https://example.com\"");
+    }
+    if !parse_size(&rw.max_message_size).is_some_and(|n| (128..=16 << 20).contains(&n)) {
+        return err("max_message_size must be between 128B and 16MB");
+    }
+    if parse_duration_secs(&rw.history_ttl).is_none() {
+        return err("invalid history_ttl");
+    }
+    let keep_alive = parse_duration_secs(&cfg.server.keep_alive_timeout).unwrap_or(75);
+    match parse_duration_secs(&rw.heartbeat) {
+        Some(h) if (5..keep_alive).contains(&h) => {}
+        _ => {
+            return err(&format!(
+                "heartbeat must be at least 5s and below server.keep_alive_timeout ({keep_alive}s)"
+            ))
+        }
+    }
+    if rw.max_connections == 0
+        || rw.max_channels == 0
+        || rw.messages_per_second == 0
+        || rw.send_queue < 16
+        || rw.history > 10_000
+    {
+        return err("max_connections, max_channels and messages_per_second must be nonzero, send_queue at least 16 and history at most 10000");
+    }
     Ok(())
 }
 
