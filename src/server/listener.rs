@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,7 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{error, info, warn};
 
-use super::overload::ConnectionLimiter;
+use super::overload::{ConnectionLimiter, Refused};
 use super::shutdown::{wait_for_ctrl_c, ShutdownTrigger};
 use super::worker::WorkerPool;
 use crate::config::ServerConfig;
@@ -32,13 +33,27 @@ impl FlashLinServer {
         })
     }
 
+    /// Starts the configured `[[apps]]`, serves until shutdown, then stops
+    /// the apps — after connections have drained, so in-flight proxied
+    /// requests can still reach them.
     pub async fn run(self) -> anyhow::Result<()> {
+        let apps = crate::apps::AppManager::start(&self.config.apps);
+        apps.register();
+        let result = self.serve().await;
+        apps.stop().await;
+        result
+    }
+
+    async fn serve(self) -> anyhow::Result<()> {
         if let Some(path) = self.watch_path.clone() {
             tokio::spawn(super::reload::watch(self.live.clone(), path));
             info!("Hot reload enabled; checking configuration every 2 seconds");
         }
         let trigger = Arc::new(ShutdownTrigger::new());
-        let limiter = ConnectionLimiter::new(self.config.server.max_connections);
+        let limiter = ConnectionLimiter::with_per_client(
+            self.config.server.max_connections,
+            self.config.server.max_connections_per_ip,
+        );
         let max = self.config.server.max_connections;
         let draining = limiter.clone();
 
@@ -46,8 +61,8 @@ impl FlashLinServer {
             return self.run_with_tls(trigger, limiter, max).await;
         }
 
-        let addr = format!("{}:{}", self.config.server.host, self.config.server.port);
-        let listener = build_listener(&addr)?;
+        let addr = listen_addr(&self.config.server.host, self.config.server.port)?;
+        let listener = build_listener(addr)?;
         let pool = WorkerPool::new(Arc::clone(&self.live));
 
         info!(
@@ -91,11 +106,11 @@ impl FlashLinServer {
             .tls
             .as_ref()
             .expect("TLS config checked before run_with_tls");
-        let https_addr = format!("{}:{}", self.config.server.host, self.config.server.port);
-        let https_listener = build_listener(&https_addr)?;
-        let http_addr = format!("{}:{}", self.config.server.host, tls.http_port);
+        let https_addr = listen_addr(&self.config.server.host, self.config.server.port)?;
+        let https_listener = build_listener(https_addr)?;
+        let http_addr = listen_addr(&self.config.server.host, tls.http_port)?;
         let http_listener = if tls.http_port != self.config.server.port {
-            Some(build_listener(&http_addr)?)
+            Some(build_listener(http_addr)?)
         } else {
             None
         };
@@ -107,10 +122,10 @@ impl FlashLinServer {
             .as_ref()
             .filter(|h| h.enabled)
             .map(|h| {
-                std::net::UdpSocket::bind((
-                    self.config.server.host.as_str(),
+                bind_udp(listen_addr(
+                    &self.config.server.host,
                     h.port.unwrap_or(self.config.server.port),
-                ))
+                )?)
             })
             .transpose()?;
         let acceptor = crate::tls::managed::ManagedTls::new(tls, trigger.subscribe())?;
@@ -242,14 +257,18 @@ async fn accept_http_loop(
             result = listener.accept() => {
                 match result {
                     Ok((stream, remote_addr)) => {
+                        let remote_addr = canonical(remote_addr);
                         if let Err(error) = stream.set_nodelay(true) {
                             warn!(%error, "Unable to enable TCP_NODELAY");
                         }
-                        match limiter.try_acquire() {
-                            Some(slot) => {
+                        match limiter.try_acquire(remote_addr.ip()) {
+                            Ok(slot) => {
                                 pool.spawn_http(stream, remote_addr, slot, trigger.subscribe());
                             }
-                            None => {
+                            Err(Refused::Client) => {
+                                tracing::debug!(client = %remote_addr, listener = label, "Per-client connection limit reached - closing");
+                            }
+                            Err(Refused::Server) => {
                                 let active = limiter.active();
                                 let cap = limiter.max();
                                 warn!(
@@ -294,11 +313,12 @@ async fn accept_https_loop(
             result = listener.accept() => {
                 match result {
                     Ok((stream, remote_addr)) => {
+                        let remote_addr = canonical(remote_addr);
                         if let Err(error) = stream.set_nodelay(true) {
                             warn!(%error, "Unable to enable TCP_NODELAY");
                         }
-                        match limiter.try_acquire() {
-                            Some(slot) => {
+                        match limiter.try_acquire(remote_addr.ip()) {
+                            Ok(slot) => {
                                 let acceptor = acceptor.clone();
                                 let config = Arc::clone(&pool.config);
                                 let shutdown = trigger.subscribe();
@@ -317,7 +337,10 @@ async fn accept_https_loop(
                                     }
                                 });
                             }
-                            None => {
+                            Err(Refused::Client) => {
+                                tracing::debug!(client = %remote_addr, "Per-client connection limit reached on HTTPS listener - closing");
+                            }
+                            Err(Refused::Server) => {
                                 warn!(
                                     active = limiter.active(),
                                     max = limiter.max(),
@@ -352,10 +375,11 @@ async fn accept_redirect_loop(
             result = listener.accept() => {
                 match result {
                     Ok((stream, remote_addr)) => {
+                        let remote_addr = canonical(remote_addr);
                         if let Err(error) = stream.set_nodelay(true) {
                             warn!(%error, "Unable to enable TCP_NODELAY");
                         }
-                        if let Some(slot) = limiter.try_acquire() {
+                        if let Ok(slot) = limiter.try_acquire(remote_addr.ip()) {
                             tokio::spawn(async move {
                                 let _ = send_https_redirect(stream).await;
                                 drop(slot);
@@ -445,14 +469,41 @@ async fn send_https_redirect(mut stream: TcpStream) -> std::io::Result<()> {
     Ok(())
 }
 
-fn build_listener(addr: &str) -> anyhow::Result<TcpListener> {
-    let socket_addr: std::net::SocketAddr = addr.parse()?;
-    let domain = if socket_addr.is_ipv6() {
-        Domain::IPV6
-    } else {
-        Domain::IPV4
-    };
-    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
+/// `server.host` + port as a socket address. Building it as "host:port" text
+/// broke IPv6 hosts: "::" became ":::80", which does not parse.
+pub(crate) fn listen_addr(host: &str, port: u16) -> anyhow::Result<SocketAddr> {
+    let ip = crate::config::parser::parse_host(host).ok_or_else(|| {
+        anyhow::anyhow!("server.host must be an IP address such as 0.0.0.0 or ::, got '{host}'")
+    })?;
+    Ok(SocketAddr::new(ip, port))
+}
+
+/// IPv4 clients of a dual-stack listener arrive as ::ffff:a.b.c.d; report
+/// them as plain IPv4 everywhere (logs, X-Forwarded-For, ACLs, limits).
+fn canonical(addr: SocketAddr) -> SocketAddr {
+    SocketAddr::new(addr.ip().to_canonical(), addr.port())
+}
+
+/// A wildcard IPv6 address ("::") also accepts IPv4, on every OS. Windows
+/// (and Linux with net.ipv6.bindv6only=1) otherwise default to IPv6-only.
+fn new_socket(addr: SocketAddr, kind: Type, protocol: Protocol) -> std::io::Result<Socket> {
+    let socket = Socket::new(Domain::for_address(addr), kind, Some(protocol))?;
+    if let SocketAddr::V6(v6) = addr {
+        if v6.ip().is_unspecified() {
+            socket.set_only_v6(false)?;
+        }
+    }
+    Ok(socket)
+}
+
+fn bind_udp(addr: SocketAddr) -> anyhow::Result<std::net::UdpSocket> {
+    let socket = new_socket(addr, Type::DGRAM, Protocol::UDP)?;
+    socket.bind(&addr.into())?;
+    Ok(socket.into())
+}
+
+fn build_listener(socket_addr: SocketAddr) -> anyhow::Result<TcpListener> {
+    let socket = new_socket(socket_addr, Type::STREAM, Protocol::TCP)?;
     socket.set_reuse_address(true)?;
     // SO_REUSEPORT: kernel-level load balancing — best-effort, non-fatal.
     // Uses the same platform gate as socket2 internally.
@@ -478,5 +529,56 @@ async fn drain_connections(limiter: &ConnectionLimiter) {
     .is_err()
     {
         warn!(active = limiter.active(), "Shutdown drain deadline reached");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn listen_addresses_accept_ipv4_ipv6_and_bracketed_ipv6() {
+        assert_eq!(
+            listen_addr("0.0.0.0", 80).unwrap().to_string(),
+            "0.0.0.0:80"
+        );
+        assert_eq!(listen_addr("::", 80).unwrap().to_string(), "[::]:80");
+        assert_eq!(listen_addr("[::]", 443).unwrap().to_string(), "[::]:443");
+        assert_eq!(
+            listen_addr(" ::1 ", 8080).unwrap().to_string(),
+            "[::1]:8080"
+        );
+        assert!(listen_addr("localhost", 80).is_err());
+        assert!(listen_addr("[::", 80).is_err());
+    }
+
+    /// `host = "::"` must serve IPv4 clients too — including on Windows, whose
+    /// sockets default to IPv6-only.
+    #[tokio::test]
+    async fn wildcard_ipv6_listener_accepts_ipv4_and_ipv6_clients() {
+        let listener = match build_listener(listen_addr("::", 0).unwrap()) {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!("skipping: IPv6 unavailable here ({error})");
+                return;
+            }
+        };
+        let port = listener.local_addr().unwrap().port();
+        for client in ["127.0.0.1", "::1"] {
+            let ip: std::net::IpAddr = client.parse().unwrap();
+            let connect = crate::server::net::connect_tcp(SocketAddr::new(ip, port));
+            let (stream, accepted) = tokio::join!(connect, listener.accept());
+            let Ok(_stream) = stream else {
+                assert!(ip.is_ipv6(), "IPv4 client could not connect to [::]:{port}");
+                eprintln!("skipping IPv6 client: no ::1 loopback here");
+                continue;
+            };
+            let (_, peer) = accepted.unwrap();
+            assert_eq!(
+                canonical(peer).ip(),
+                ip,
+                "client {client} reported as {peer}"
+            );
+        }
     }
 }

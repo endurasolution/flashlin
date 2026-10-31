@@ -1,6 +1,7 @@
 // FlashLin — Fast, Reliable, Cached, Powerful Rust Web Server
-// v2.0.0 — production hardening · per-host state · metrics · static mounts
+// v3.0.0 — supervised Node.js/Python apps · per-client limits · faster vhosts
 
+mod apps;
 mod cache;
 mod cli;
 mod config;
@@ -13,6 +14,7 @@ mod metrics;
 mod middleware;
 mod php;
 mod proxy;
+mod realweb;
 mod security;
 mod server;
 mod static_files;
@@ -130,6 +132,19 @@ fn print_help() {
         "  flashlin remove                Stop it and remove the binary + systemd unit",
         "                                 (config, web root and certs are left in place)",
         "",
+        "Manage background apps ([[apps]] in server.toml) of a running server:",
+        "  flashlin apps [config]         List apps with state, pid, port, restarts, health",
+        "  flashlin apps restart <name> [config]",
+        "                                 Gracefully restart every instance of an app",
+        "",
+        "RealWeb realtime hub ([realweb] in server.toml):",
+        "  flashlin realweb token [--user ID] [--subscribe P]... [--publish P]... [--ttl 1h] [config]",
+        "                                 Sign a client token with realweb.secret",
+        "  flashlin realweb publish <channel> <json> [config]",
+        "                                 Publish a message to a channel of a running server",
+        "  flashlin realweb status [config]",
+        "                                 Show connections, channels and message counts",
+        "",
         "Other:",
         "  flashlin --version             Show version and build info (-V)",
         "  flashlin --license             Show the license text",
@@ -208,6 +223,9 @@ fn default_config() -> config::ServerConfig {
             domains_dir: None,
             direct_static_io: false,
             sendfile: false,
+            max_connections_per_ip: 0,
+            control_token: None,
+            directory_listing_css: None,
         },
         http3: None,
         tls: None,
@@ -253,9 +271,13 @@ fn default_config() -> config::ServerConfig {
             cache_control: None,
             methods: None,
             directory_listing: false,
+            app: None,
         }]),
         static_dirs: None,
         virtual_hosts: vec![],
+        vhost_index: Default::default(),
+        apps: vec![],
+        realweb: None,
         state: Default::default(),
     }
 }

@@ -22,6 +22,10 @@ feature. Configure application heartbeats below the socket idle deadlines.
 HTTP/2 and HTTP/3 extended CONNECT WebSockets are not implemented. Upgrade requests are
 never automatically replayed; the process permits up to 1,024 active tunnels.
 
+To have FlashLin hold the connections itself, with authenticated channels,
+resume after reconnect and backend publishing over HTTP, use the built-in
+RealWeb hub instead: see [REALWEB.md](REALWEB.md).
+
 ## QUERY: application requests with content
 
 [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html) defines the case-sensitive

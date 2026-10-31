@@ -377,7 +377,7 @@ mod linux {
             .as_ref()
             .and_then(|s| s.rate_limit.as_ref())
             .is_some()
-            && !get_rate_limiter(config, "default").check(&remote_addr.ip().to_string())
+            && !get_rate_limiter(config, "default").check(remote_addr.ip())
         {
             return Ok(Outcome::Fallback);
         }

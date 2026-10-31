@@ -1,5 +1,5 @@
-pub const FLASHLIN_VERSION_CODE: &str = "FL-2.0.0-20260914";
-pub const FLASHLIN_RELEASE_DATE: &str = "2026-09-14";
+pub const FLASHLIN_VERSION_CODE: &str = "FL-3.1.0-20261031";
+pub const FLASHLIN_RELEASE_DATE: &str = "2026-10-31";
 pub const FLASHLIN_LICENSE_VERSION: &str = "CC-BY-NC-4.0";
 pub const FLASHLIN_LICENSE_TYPE: &str =
     "Creative Commons Attribution-NonCommercial 4.0 International";
@@ -22,6 +22,7 @@ pub fn print_version() {
         cfg!(feature = "tls"),
         cfg!(feature = "acme")
     );
+    println!("Apps: supervised Node.js, Python and custom commands ([[apps]])");
     println!("Version Code: {}", FLASHLIN_VERSION_CODE);
     println!("Release Date: {}", FLASHLIN_RELEASE_DATE);
     println!("License Type: {}", FLASHLIN_LICENSE_TYPE);

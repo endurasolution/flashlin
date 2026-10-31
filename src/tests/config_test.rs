@@ -52,6 +52,9 @@ mod tests {
                 domains_dir: None,
                 direct_static_io: false,
                 sendfile: false,
+                max_connections_per_ip: 0,
+                control_token: None,
+                directory_listing_css: None,
             },
             http3: None,
             tls: None,
@@ -74,6 +77,9 @@ mod tests {
             routes: None,
             static_dirs: None,
             virtual_hosts: vec![],
+            vhost_index: Default::default(),
+            apps: vec![],
+            realweb: None,
             state: Default::default(),
         };
 

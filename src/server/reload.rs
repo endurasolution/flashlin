@@ -43,6 +43,7 @@ pub fn load_config(path: &str) -> anyhow::Result<ServerConfig> {
         )?;
     }
     crate::promote_domain_tls(&mut cfg);
+    crate::apps::resolve_routes(&mut cfg)?;
     config::validate(&cfg)?;
     let mut names = std::collections::HashSet::new();
     for host in &cfg.virtual_hosts {
@@ -68,6 +69,7 @@ pub fn load_config(path: &str) -> anyhow::Result<ServerConfig> {
     if let Some(tls) = cfg.tls.as_ref().filter(|t| t.enabled && t.acme.is_none()) {
         crate::tls::build_tls_config(tls)?;
     }
+    crate::http::router::build_vhost_index(&mut cfg);
     Ok(cfg)
 }
 
@@ -94,7 +96,9 @@ fn restart_key(cfg: &ServerConfig) -> String {
             cfg.server.port,
             cfg.server.workers,
             cfg.server.max_connections,
+            cfg.server.max_connections_per_ip,
             &cfg.http3,
+            &cfg.apps,
             cfg.logging.as_ref().map(|l| toml::to_string(l).unwrap()),
             t.map(|t| (t.http_port, t.redirect_http_to_https, &t.acme))
         )
@@ -105,7 +109,7 @@ pub fn reload_once(live: &LiveConfig, path: &str) -> anyhow::Result<bool> {
     let current = live.load_full();
     let config = load_config(path)?;
     anyhow::ensure!(restart_key(&current.config) == restart_key(&config),
-        "Listener, worker, connection-limit, logging or ACME changes require a restart; keeping previous configuration");
+        "Listener, worker, connection-limit, logging, ACME or [[apps]] changes require a restart; keeping previous configuration");
     let next = Snapshot::new(Arc::new(config))?;
     if next.fingerprint == current.fingerprint {
         return Ok(false);

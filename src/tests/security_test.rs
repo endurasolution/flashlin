@@ -78,10 +78,13 @@ mod tests {
         // capacity=3, refill=0 (no refill during test), burst=0
         let limiter = RateLimiter::new(3, 0.0, 0);
 
-        assert!(limiter.check("1.2.3.4"));
-        assert!(limiter.check("1.2.3.4"));
-        assert!(limiter.check("1.2.3.4"));
-        assert!(!limiter.check("1.2.3.4"), "4th request must be blocked");
+        assert!(limiter.check("1.2.3.4".parse().unwrap()));
+        assert!(limiter.check("1.2.3.4".parse().unwrap()));
+        assert!(limiter.check("1.2.3.4".parse().unwrap()));
+        assert!(
+            !limiter.check("1.2.3.4".parse().unwrap()),
+            "4th request must be blocked"
+        );
     }
 
     #[test]
@@ -90,12 +93,12 @@ mod tests {
 
         let limiter = RateLimiter::new(1, 0.0, 0);
 
-        assert!(limiter.check("1.0.0.1"));
-        assert!(!limiter.check("1.0.0.1")); // blocked
+        assert!(limiter.check("1.0.0.1".parse().unwrap()));
+        assert!(!limiter.check("1.0.0.1".parse().unwrap())); // blocked
 
         // Different IP should still pass.
         assert!(
-            limiter.check("1.0.0.2"),
+            limiter.check("1.0.0.2".parse().unwrap()),
             "Different IP must not be rate-limited"
         );
     }

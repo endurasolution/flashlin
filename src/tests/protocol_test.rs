@@ -303,7 +303,7 @@ async fn http1_http2_tls_and_http3_share_port_with_correct_discovery() {
     let fixture = Fixture::new().await;
     let addr = fixture.tcp.local_addr().unwrap();
     for protocol in [b"http/1.1".as_slice(), b"h2".as_slice()] {
-        let socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let socket = crate::server::net::connect_tcp(addr).await.unwrap();
         let (server, peer) = fixture.tcp.accept().await.unwrap();
         let live = fixture.live.clone();
         let shutdown = fixture.trigger.subscribe();
@@ -369,7 +369,7 @@ async fn http1_http2_tls_and_http3_share_port_with_correct_discovery() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn http3_query_proxy_body_framing_reload_and_certificate_rotation() {
     let mut fixture = Fixture::new().await;
-    let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let tcp = crate::server::net::bind_tcp("127.0.0.1:0").unwrap();
     let backend = tcp.local_addr().unwrap();
     let upstream = tokio::spawn(async move {
         loop {
@@ -484,7 +484,13 @@ async fn http3_connection_cap_and_shutdown_drain_preserve_response() {
     let mut client = fixture.connect().await;
     // Represent three TCP connections competing with this QUIC connection.
     let slots: Vec<_> = (0..3)
-        .map(|_| fixture.limiter.try_acquire().unwrap())
+        .map(|_| {
+            fixture
+                .limiter
+                .try_acquire([127, 0, 0, 1].into())
+                .ok()
+                .unwrap()
+        })
         .collect();
     assert_eq!(fixture.limiter.active(), 4);
     let mut extra = quinn::Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();

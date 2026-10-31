@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RealWeb chat demo</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f7f9; --panel: #fff; --text: #1d2330; --muted: #677085; --line: #dfe3ea; --accent: #2f6fde; --ok: #1f9d55; --warn: #c27c0e; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #11141a; --panel: #1a1f28; --text: #e6e9ef; --muted: #9aa3b5; --line: #2b3240; --accent: #6d9cff; --ok: #3fcf7f; --warn: #f0b143; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px; display: grid; gap: 12px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  .status { font-size: 13px; color: var(--muted); }
+  .status b { color: var(--warn); }
+  .status b.open { color: var(--ok); }
+  #log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; height: 55vh; overflow-y: auto; padding: 12px; }
+  .line { margin: 2px 0; overflow-wrap: anywhere; }
+  .line .who { font-weight: 600; margin-right: 6px; }
+  .line.system { color: var(--muted); font-style: italic; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; }
+  button { padding: 10px 16px; border-radius: 6px; border: 0; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+  footer { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>RealWeb chat</h1>
+    <span class="status">You are <span id="me">…</span> · <b id="state">connecting</b> · <span id="online">0</span> online · server clock <span id="clock">–</span></span>
+  </header>
+  <div id="log" aria-live="polite"></div>
+  <form id="send">
+    <input id="text" autocomplete="off" maxlength="500" placeholder="Say something…" required>
+    <button>Send</button>
+  </form>
+  <footer>Open this page in two windows. Stop your network for a moment: messages sent meanwhile arrive when it reconnects.</footer>
+</main>
+<script src="/realweb/client.js"></script>
+<script>
+  const ROOM = "chat/lobby";
+  const log = document.getElementById("log");
+  const name = sessionStorage.getItem("rw-name") || "";
+
+  function line(text, who, system) {
+    const div = document.createElement("div");
+    div.className = "line" + (system ? " system" : "");
+    if (who) {
+      const span = document.createElement("span");
+      span.className = "who";
+      span.textContent = who;
+      div.append(span);
+    }
+    div.append(document.createTextNode(text));
+    log.append(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  const rw = new RealWeb("/realweb", {
+    token: () => fetch("/api/realweb-token?name=" + encodeURIComponent(name)).then(r => r.text()),
+  });
+
+  rw.on("state", state => {
+    const el = document.getElementById("state");
+    el.textContent = state;
+    el.className = state === "open" ? "open" : "";
+  });
+  rw.on("open", welcome => {
+    document.getElementById("me").textContent = welcome.uid;
+    sessionStorage.setItem("rw-name", welcome.uid);
+    refreshPresence();
+  });
+
+  rw.subscribe(ROOM, (data, meta) => line(String(data.text), meta.from + ":"), {
+    onReset: () => line("Some messages were missed while offline.", null, true),
+  });
+  rw.subscribe("news/clock", data => {
+    document.getElementById("clock").textContent = new Date(data.now).toLocaleTimeString();
+  });
+
+  function refreshPresence() {
+    rw.presence(ROOM).then(p => { document.getElementById("online").textContent = p.count; }, () => {});
+  }
+  setInterval(refreshPresence, 5000);
+
+  document.getElementById("send").addEventListener("submit", async event => {
+    event.preventDefault();
+    const input = document.getElementById("text");
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    try {
+      await rw.publish(ROOM, { text });
+    } catch (e) {
+      line("Not sent (" + (e.code || e.message) + "): " + text, null, true);
+    }
+  });
+</script>
+</body>
+</html>

@@ -3,9 +3,9 @@ name: Sync README to Docker Hub
 on:
   push:
     branches:
-      - main
+      - master
     paths:
-      - README.md        # only runs when README changes
+      - dockerflashlin/README.md   # only runs when the Docker Hub overview changes
 
 jobs:
   push-readme:
@@ -20,4 +20,4 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: endurasolution/flashlin
-          readme-filepath: ./README.md
+          readme-filepath: ./dockerflashlin/README.md

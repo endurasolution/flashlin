@@ -1,4 +1,4 @@
-use super::parser::{parse_duration_secs, parse_size, ServerConfig};
+use super::parser::{parse_duration_secs, parse_host, parse_size, ServerConfig};
 use crate::error::{FlashError, Result};
 use std::path::Path;
 
@@ -16,6 +16,73 @@ pub fn validate(cfg: &ServerConfig) -> Result<()> {
     }
     validate_php(cfg)?;
     validate_routes(cfg)?;
+    validate_apps(cfg)?;
+    validate_realweb(cfg)?;
+    Ok(())
+}
+
+fn validate_realweb(cfg: &ServerConfig) -> Result<()> {
+    let Some(rw) = cfg.realweb.as_ref().filter(|rw| rw.enabled) else {
+        return Ok(());
+    };
+    let err = |msg: &str| Err(FlashError::Config(format!("realweb: {msg}")));
+    if !rw.path.starts_with('/')
+        || rw.path.len() < 2
+        || rw.path.ends_with('/')
+        || rw.path.starts_with("/flashlin")
+        || !rw
+            .path
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/-_.".contains(&b))
+    {
+        return err("path must look like \"/realweb\" (no trailing slash, not under /flashlin)");
+    }
+    match rw.secret.as_deref() {
+        Some(secret) if secret.len() < 32 => {
+            return err("secret must be at least 32 characters");
+        }
+        None if rw.public_channels.is_empty() => {
+            return err("set a secret (for tokens) or public_channels, or nothing can connect");
+        }
+        _ => {}
+    }
+    if let Some(bad) = rw
+        .public_channels
+        .iter()
+        .find(|p| !crate::realweb::valid_pattern(p))
+    {
+        return err(&format!("invalid channel pattern '{bad}'"));
+    }
+    if rw
+        .allowed_origins
+        .iter()
+        .any(|o| o != "*" && !(o.starts_with("http://") || o.starts_with("https://")))
+    {
+        return err("allowed_origins entries must be \"*\" or like \"https://example.com\"");
+    }
+    if !parse_size(&rw.max_message_size).is_some_and(|n| (128..=16 << 20).contains(&n)) {
+        return err("max_message_size must be between 128B and 16MB");
+    }
+    if parse_duration_secs(&rw.history_ttl).is_none() {
+        return err("invalid history_ttl");
+    }
+    let keep_alive = parse_duration_secs(&cfg.server.keep_alive_timeout).unwrap_or(75);
+    match parse_duration_secs(&rw.heartbeat) {
+        Some(h) if (5..keep_alive).contains(&h) => {}
+        _ => {
+            return err(&format!(
+                "heartbeat must be at least 5s and below server.keep_alive_timeout ({keep_alive}s)"
+            ))
+        }
+    }
+    if rw.max_connections == 0
+        || rw.max_channels == 0
+        || rw.messages_per_second == 0
+        || rw.send_queue < 16
+        || rw.history > 10_000
+    {
+        return err("max_connections, max_channels and messages_per_second must be nonzero, send_queue at least 16 and history at most 10000");
+    }
     Ok(())
 }
 
@@ -43,6 +110,33 @@ fn validate_http3(cfg: &ServerConfig) -> Result<()> {
 fn validate_server(cfg: &ServerConfig) -> Result<()> {
     if cfg.server.port == 0 {
         return Err(FlashError::Config("server.port cannot be 0".into()));
+    }
+    if parse_host(&cfg.server.host).is_none() {
+        return Err(FlashError::Config(format!(
+            "server.host must be an IP address such as \"0.0.0.0\" (all IPv4), \"::\" \
+             (all IPv4 and IPv6) or \"127.0.0.1\"; got '{}'",
+            cfg.server.host
+        )));
+    }
+    if cfg
+        .server
+        .control_token
+        .as_deref()
+        .is_some_and(|t| t.len() < 16 || !t.bytes().all(|b| b.is_ascii_graphic()))
+    {
+        return Err(FlashError::Config(
+            "server.control_token must be at least 16 printable characters without spaces".into(),
+        ));
+    }
+    if cfg
+        .server
+        .directory_listing_css
+        .as_deref()
+        .is_some_and(|css| css.is_empty() || css.chars().any(char::is_control))
+    {
+        return Err(FlashError::Config(
+            "server.directory_listing_css must be a URL such as \"/assets/listing.css\"".into(),
+        ));
     }
     if let Some(workers) = cfg.server.workers {
         if workers == 0 {
@@ -264,6 +358,14 @@ fn validate_routes(cfg: &ServerConfig) -> Result<()> {
                     FlashError::Config(format!("Route '{}': {reason}", route.path))
                 })?;
             }
+            if let Some(app) = &route.app {
+                if !cfg.apps.iter().any(|a| &a.name == app) {
+                    return Err(FlashError::Config(format!(
+                        "Route '{}': app '{app}' is not defined in [[apps]]",
+                        route.path
+                    )));
+                }
+            }
             if has_root && has_proxy {
                 return Err(FlashError::Config(format!(
                     "Route '{}': cannot set both 'root' and 'proxy_pass'",
@@ -279,6 +381,90 @@ fn validate_routes(cfg: &ServerConfig) -> Result<()> {
                         root
                     );
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_apps(cfg: &ServerConfig) -> Result<()> {
+    let mut claimed: Vec<(u16, u16, &str)> = Vec::new();
+    for app in &cfg.apps {
+        let err = |msg: String| Err(FlashError::Config(format!("App '{}': {msg}", app.name)));
+        if app.name.is_empty()
+            || app.name.len() > 64
+            || !app
+                .name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(FlashError::Config(format!(
+                "App name '{}' must be 1-64 characters of letters, digits, '-' or '_'",
+                app.name
+            )));
+        }
+        if claimed.iter().any(|(_, _, name)| *name == app.name) {
+            return err("duplicate app name".into());
+        }
+        if app.command.as_deref().is_none_or(str::is_empty) && app.runtime.is_none() {
+            return err("set 'runtime' (node or python) or 'command'".into());
+        }
+        if !(1..=64).contains(&app.instances) {
+            return err("instances must be 1..=64".into());
+        }
+        let Some(last) = app
+            .port
+            .checked_add(app.instances - 1)
+            .filter(|_| app.port != 0)
+        else {
+            return err("port must be nonzero and port + instances - 1 must fit in 65535".into());
+        };
+        let mut reserved = vec![cfg.server.port];
+        if let Some(tls) = cfg.tls.as_ref().filter(|t| t.enabled) {
+            reserved.push(tls.http_port);
+        }
+        if let Some(h3) = cfg.http3.as_ref().filter(|h| h.enabled) {
+            reserved.push(h3.port.unwrap_or(cfg.server.port));
+        }
+        if reserved.iter().any(|p| (app.port..=last).contains(p)) {
+            return err(format!(
+                "ports {}..={last} overlap a port FlashLin itself listens on",
+                app.port
+            ));
+        }
+        if let Some((_, _, other)) = claimed
+            .iter()
+            .find(|(first, end, _)| app.port <= *end && *first <= last)
+        {
+            return err(format!("ports overlap app '{other}'"));
+        }
+        claimed.push((app.port, last, &app.name));
+        for (field, value) in [
+            ("health_interval", &app.health_interval),
+            ("start_timeout", &app.start_timeout),
+            ("stop_timeout", &app.stop_timeout),
+        ] {
+            if !parse_duration_secs(value).is_some_and(|s| s > 0) {
+                return err(format!("invalid {field} '{value}'"));
+            }
+        }
+        // The path is written into the probe's request line verbatim.
+        if let Some(path) = &app.health_check {
+            if !path.starts_with('/') || path.bytes().any(|b| !b.is_ascii_graphic()) {
+                return err("health_check must be a path like \"/health\" with no spaces".into());
+            }
+        }
+        for key in app.env.keys() {
+            if key.is_empty() || key.contains(['=', ' ']) {
+                return err(format!("invalid environment variable name '{key}'"));
+            }
+        }
+        if app.user.is_some() && !cfg!(unix) {
+            return err("'user' is only supported on Unix".into());
+        }
+        if let Some(cwd) = &app.cwd {
+            if !Path::new(cwd).is_dir() {
+                tracing::warn!(app = %app.name, cwd, "App working directory does not exist");
             }
         }
     }

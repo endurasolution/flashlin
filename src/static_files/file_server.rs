@@ -244,7 +244,7 @@ fn prepare_static(
                 Some((path, meta)) => (path, Some(meta)),
                 None => {
                     if directory_listing {
-                        return render_directory_listing(&base_path, url_path);
+                        return render_directory_listing(&base_path, url_path, config);
                     }
                     return Err(FlashError::NotFound);
                 }
@@ -728,7 +728,7 @@ pub async fn serve_static_with_headers(
     index_files: &[&str],
     cache_control: Option<&str>,
     directory_listing: bool,
-    _config: &Arc<ServerConfig>,
+    config: &Arc<ServerConfig>,
     req_headers: Option<&hyper::HeaderMap>,
 ) -> Result<HyperResponse> {
     validate_url_path(url_path)?;
@@ -763,7 +763,7 @@ pub async fn serve_static_with_headers(
             Some(p) => p,
             None => {
                 if directory_listing {
-                    return render_directory_listing(&fs_path, url_path);
+                    return render_directory_listing(&fs_path, url_path, config);
                 }
                 return Err(FlashError::NotFound);
             }
@@ -877,50 +877,215 @@ fn map_io_error(e: std::io::Error) -> FlashError {
 
 // ─── Directory listing ────────────────────────────────────────────────────────
 
-fn render_directory_listing(dir: &Path, url_path: &str) -> Result<HyperResponse> {
+/// nginx-`autoindex`-style listing. Names are HTML-escaped and links
+/// percent-encoded, since file names are attacker-controllable wherever
+/// uploads land. Entries FlashLin refuses to serve (dotfiles, sensitive files)
+/// are not listed either, so the listing never reveals their names.
+fn render_directory_listing(
+    dir: &Path,
+    url_path: &str,
+    config: &ServerConfig,
+) -> Result<HyperResponse> {
+    let security = config.security.as_ref();
+    let hide_dotfiles = security.is_none_or(|s| s.block_dotfiles);
+    let hide_sensitive = security.is_none_or(|s| s.block_sensitive_files);
+    let base = if url_path.ends_with('/') {
+        url_path.to_string()
+    } else {
+        format!("{url_path}/")
+    };
+
     let mut entries = std::fs::read_dir(dir)
         .map_err(FlashError::Io)?
         .filter_map(|e| e.ok())
-        .map(|e| {
+        .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            (name, is_dir)
+            if (hide_dotfiles && name.starts_with('.'))
+                || (hide_sensitive
+                    && crate::security::sensitive_files::is_sensitive_path(&format!(
+                        "{base}{name}"
+                    )))
+            {
+                return None;
+            }
+            // Follows symlinks, like the file server itself.
+            let meta = std::fs::metadata(e.path()).ok();
+            let is_dir = meta.as_ref().is_some_and(|m| m.is_dir());
+            Some((name, is_dir, meta))
         })
         .collect::<Vec<_>>();
 
     entries.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
+    let title = escape_html(url_path);
     let mut html = format!(
-        "<!DOCTYPE html><html><head><title>Index of {url_path}</title>\
-         <style>body{{font-family:monospace;padding:1em}}a{{display:block;padding:2px}}</style>\
-         </head><body><h1>Index of {url_path}</h1><hr>"
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+         <title>Index of {title}</title>\
+         <style>body{{font-family:monospace;padding:1em}}\
+         table.listing{{border-collapse:collapse}}\
+         table.listing th,table.listing td{{padding:2px 1.5em 2px 0;text-align:left}}\
+         table.listing td.size,table.listing th.size{{text-align:right}}</style>"
     );
-
+    if let Some(css) = config.server.directory_listing_css.as_deref() {
+        html.push_str(&format!(
+            "<link rel=\"stylesheet\" href=\"{}\">",
+            escape_html(css)
+        ));
+    }
+    html.push_str(&format!(
+        "</head><body><h1>Index of {title}</h1>\
+         <table class=\"listing\"><thead><tr><th class=\"name\">Name</th>\
+         <th class=\"modified\">Last modified</th><th class=\"size\">Size</th></tr></thead><tbody>"
+    ));
     if url_path != "/" {
-        html.push_str("<a href=\"../\">[Parent Directory]</a>");
+        html.push_str(
+            "<tr class=\"parent\"><td class=\"name\"><a href=\"../\">../</a></td>\
+             <td class=\"modified\"></td><td class=\"size\"></td></tr>",
+        );
     }
-
-    for (name, is_dir) in &entries {
-        let display = if *is_dir {
-            format!("{name}/")
-        } else {
-            name.clone()
+    for (name, is_dir, meta) in &entries {
+        let slash = if *is_dir { "/" } else { "" };
+        let modified = meta
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .map(|t| {
+                chrono::DateTime::<chrono::Utc>::from(t)
+                    .format("%Y-%m-%d %H:%M")
+                    .to_string()
+            })
+            .unwrap_or_default();
+        let size = match meta {
+            Some(m) if !is_dir => human_size(m.len()),
+            _ => "-".to_string(),
         };
-        let href = if *is_dir {
-            format!("{name}/")
-        } else {
-            name.clone()
-        };
-        html.push_str(&format!("<a href=\"{href}\">{display}</a>"));
+        html.push_str(&format!(
+            "<tr class=\"{kind}\"><td class=\"name\"><a href=\"{href}{slash}\">{label}{slash}</a></td>\
+             <td class=\"modified\">{modified}</td><td class=\"size\">{size}</td></tr>",
+            kind = if *is_dir { "dir" } else { "file" },
+            href = percent_encoding::utf8_percent_encode(name, PATH_SEGMENT),
+            label = escape_html(name),
+        ));
     }
-
-    html.push_str("<hr></body></html>");
+    html.push_str("</tbody></table></body></html>");
 
     Ok(Response::builder()
         .status(200)
         .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header(header::CACHE_CONTROL, "no-cache")
         .body(ResponseBody::new(Bytes::from(html)))
         .unwrap())
+}
+
+/// Everything but RFC 3986 unreserved characters, so a name is one path segment.
+const PATH_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
+fn escape_html(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+#[cfg(test)]
+mod directory_listing_tests {
+    use super::*;
+    use http_body_util::BodyExt;
+
+    async fn body(response: HyperResponse) -> String {
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn listing_escapes_names_encodes_links_and_hides_blocked_files() {
+        let dir = std::env::temp_dir().join(format!("flashlin-listing-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("sub dir")).unwrap();
+        std::fs::write(dir.join(".env"), "secret").unwrap();
+        std::fs::write(dir.join(".notes.txt"), "hidden").unwrap();
+        std::fs::write(dir.join("backup.sql"), "dump").unwrap();
+        std::fs::write(dir.join("a&b #1.txt"), vec![0u8; 2048]).unwrap();
+        // '<', '>' and '"' are legal in Unix file names; Windows rejects them.
+        let hostile = if cfg!(windows) {
+            None
+        } else {
+            let name = "\"><img src=x onerror=alert(1)>.txt";
+            std::fs::write(dir.join(name), "x").unwrap();
+            Some(name)
+        };
+        let mut config = crate::default_config();
+        config.server.directory_listing_css = Some("/theme.css?v=\"1".into());
+
+        let html = body(render_directory_listing(&dir, "/files/<x>/", &config).unwrap()).await;
+
+        assert!(
+            html.contains("<title>Index of /files/&lt;x&gt;/</title>"),
+            "{html}"
+        );
+        assert!(html.contains("<link rel=\"stylesheet\" href=\"/theme.css?v=&quot;1\">"));
+        assert!(
+            html.contains("<a href=\"a%26b%20%231.txt\">a&amp;b #1.txt</a>"),
+            "{html}"
+        );
+        assert!(html.contains("<td class=\"size\">2.0 KiB</td>"), "{html}");
+        assert!(
+            html.contains("<a href=\"sub%20dir/\">sub dir/</a>"),
+            "{html}"
+        );
+        assert!(
+            !html.contains(".env") && !html.contains(".notes"),
+            "dotfiles must not be listed"
+        );
+        assert!(
+            !html.contains("backup.sql"),
+            "sensitive files must not be listed"
+        );
+        if hostile.is_some() {
+            assert!(!html.contains("<img"), "{html}");
+            assert!(html.contains("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;.txt"));
+        }
+
+        config.security.as_mut().unwrap().block_dotfiles = false;
+        let html = body(render_directory_listing(&dir, "/", &config).unwrap()).await;
+        assert!(html.contains(">.notes.txt</a>"), "{html}");
+        assert!(!html.contains(".env"), ".env is also a sensitive file");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn human_sizes() {
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(1023), "1023 B");
+        assert_eq!(human_size(1536), "1.5 KiB");
+        assert_eq!(human_size(5 * 1024 * 1024), "5.0 MiB");
+    }
 }
 
 #[cfg(test)]

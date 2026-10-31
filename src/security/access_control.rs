@@ -40,6 +40,9 @@ pub fn check_ip_access(ip: &IpAddr, config: &ServerConfig) -> Result<()> {
 /// Very simple IP / CIDR matcher.
 /// Supports: exact IP ("192.168.1.1"), CIDR ("192.168.0.0/24"), wildcard ("192.168.*").
 pub fn matches_ip_rule(ip: &IpAddr, rule: &str) -> bool {
+    // A dual-stack listener reports IPv4 clients as ::ffff:a.b.c.d, which
+    // would otherwise slip past every IPv4 rule.
+    let ip = &ip.to_canonical();
     // Wildcard shorthand: "192.168.*"
     if rule.contains('*') {
         let prefix = rule.trim_end_matches(".*").trim_end_matches('*');
@@ -58,7 +61,7 @@ pub fn matches_ip_rule(ip: &IpAddr, rule: &str) -> bool {
 
     // Exact match.
     rule.parse::<IpAddr>()
-        .map(|rule_ip| rule_ip == *ip)
+        .map(|rule_ip| rule_ip.to_canonical() == *ip)
         .unwrap_or(false)
 }
 
@@ -109,6 +112,17 @@ mod tests {
         let ip: IpAddr = "192.168.1.50".parse().unwrap();
         assert!(matches_ip_rule(&ip, "192.168.1.0/24"));
         assert!(!matches_ip_rule(&ip, "192.168.2.0/24"));
+    }
+
+    #[test]
+    fn ipv4_mapped_ipv6_clients_match_ipv4_rules() {
+        let mapped: IpAddr = "::ffff:1.2.3.4".parse().unwrap();
+        assert!(matches_ip_rule(&mapped, "1.2.3.4"));
+        assert!(matches_ip_rule(&mapped, "1.2.3.0/24"));
+        assert!(matches_ip_rule(&mapped, "1.2.*"));
+        let mut config = crate::default_config();
+        config.security.as_mut().unwrap().deny_ips = Some(vec!["1.2.3.4".into()]);
+        assert!(check_ip_access(&mapped, &config).is_err());
     }
 
     #[test]

@@ -3,6 +3,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 [server]
+# "0.0.0.0" = all IPv4 addresses; "::" = all IPv4 *and* IPv6 addresses (dual
+# stack, on every OS); or one address such as "127.0.0.1" / "::1".
 host         = "0.0.0.0"
 port         = 8080           # Change to 443 when TLS is enabled
 workers      = 4              # Worker threads (omit to use available CPU cores)
@@ -27,6 +29,17 @@ max_connections = 0
 # disk, network filesystem, contended remote storage) then stalls every
 # other request already queued on that worker thread. Default: false.
 # direct_static_io = true
+# Maximum simultaneous connections from one client (IPv4 address or IPv6 /64).
+# Excess connections are closed at accept, before any TLS/HTTP work. 0 = unlimited.
+# max_connections_per_ip = 64
+# Require `Authorization: Bearer <token>` on the loopback control endpoints
+# used by `flashlin purge cache` and `flashlin apps` (the CLI reads it from
+# this file, so keep it chmod 640). At least 16 characters.
+# control_token = "change-me-to-a-long-random-string"
+# Stylesheet linked from directory listings (routes with directory_listing =
+# true), loaded after the built-in styles. Rows have class "dir"/"file"/"parent"
+# and cells "name"/"modified"/"size". Per domain: [domain] directory_listing_css.
+# directory_listing_css = "/assets/listing.css"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TLS / HTTPS  (uncomment to enable)
@@ -144,6 +157,36 @@ max_file_size = "10MB"   # Skip caching files larger than this
 # timeout       = "30s"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Background apps — Node.js, Python or any command  (see docs/APPS.md)
+# ─────────────────────────────────────────────────────────────────────────────
+# FlashLin starts each app with the server, passes it PORT and HOST=127.0.0.1,
+# restarts it with backoff if it exits, and stops it on shutdown. Connect a
+# route to it with `app = "<name>"` (see Routes below).
+#
+# [[apps]]
+# name         = "api"
+# runtime      = "node"            # "node" | "python" — or set `command`
+# script       = "server.js"
+# cwd          = "/srv/api"
+# port         = 3000              # instance N listens on port + N
+# instances    = 2
+# health_check = "/health"         # restart when it stops answering
+# user         = "www-data"        # required when FlashLin runs as root
+# env          = { DATABASE_URL = "postgres://localhost/app" }
+#
+# [[apps]]
+# name    = "fastapi"
+# command = "/srv/fastapi/.venv/bin/uvicorn"
+# args    = ["main:app", "--host", "127.0.0.1", "--port", "{port}"]
+# cwd     = "/srv/fastapi"
+# port    = 8000
+# user    = "www-data"
+#
+# Optional per app: restart = "always" | "on-failure" | "never",
+# max_restarts = 10, health_interval = "10s", start_timeout = "30s",
+# stop_timeout = "10s", log_file = "/var/log/flashlin/api.log"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -170,6 +213,11 @@ directory_listing = false
 
 # Or spread requests across backends (do not combine with proxy_pass):
 # proxy_upstreams = ["http://127.0.0.1:3000", "http://127.0.0.1:3001"]
+
+# Or proxy to an [[apps]] entry FlashLin runs itself:
+# [[routes]]
+# path = "/api"
+# app  = "api"
 
 # Static assets with long-lived cache
 # [[routes]]

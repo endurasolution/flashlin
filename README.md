@@ -5,14 +5,16 @@
 
   Nginx's reverse-proxy power, Apache's PHP hosting flexibility, and Caddy's
   zero-friction TOML setup — in a single, memory-safe Rust binary.
-  Version 2.0 is a production release; see the roadmap below for ongoing
-  hardening work.
+  Version 3.1 adds RealWeb, a built-in realtime hub: authenticated channels,
+  resume after reconnect and backend publishing over HTTP, alongside plain
+  WebSocket proxying. Version 3.0 added supervised Node.js and Python apps.
+  See the roadmap below for ongoing hardening work.
 
   [**Website**](https://flashlin.com) · [**Documentation**](https://flashlin.com/docs) · [**Docker Hub**](https://hub.docker.com/r/endurasolution/flashlin)
 
   [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
   [![Rust](https://img.shields.io/badge/Rust-tested%201.95-orange)](https://www.rust-lang.org)
-  [![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/endurasolution/flashlin/releases)
+  [![Version](https://img.shields.io/badge/version-3.1.0-blue)](https://github.com/endurasolution/flashlin/releases)
   [![Docker Pulls](https://img.shields.io/docker/pulls/endurasolution/flashlin)](https://hub.docker.com/r/endurasolution/flashlin)
   [![Website](https://img.shields.io/badge/website-flashlin.com-00d2d2)](https://flashlin.com)
 
@@ -68,11 +70,17 @@ HTTP/3 through Quinn. Its feature set includes capabilities familiar from other 
 | Single binary — no runtime dependencies | ✅ |
 | Hot config reload | ✅ Opt-in `--watch`, validated snapshots |
 | WebSocket proxy (HTTP/1 upgrades) | ✅ v2 |
+| RealWeb realtime hub: authenticated channels, resume after reconnect, acks, presence, backend publish | ✅ New; [guide](docs/REALWEB.md) |
 | HTTP QUERY method (RFC 10008) | ✅ Application/proxy transport, body validation and safe failover |
 | Streaming files, byte ranges, precompressed assets | ✅ v2 |
 | Pooled HTTP/HTTPS upstreams and streamed responses | ✅ v2 |
 | Round-robin upstreams and passive failover | ✅ v2 |
 | Auto TLS / ACME (Let's Encrypt) | ✅ Optional `acme` build; deployment validation pending |
+| Supervised Node.js / Python / any-command apps (`[[apps]]`) | ✅ v3: auto-restart with backoff, health checks, multi-instance load balancing; [guide](docs/APPS.md) |
+| `flashlin apps` status and restart commands | ✅ v3 |
+| Per-client connection limit (`max_connections_per_ip`) | ✅ v3 |
+| IPv6 /64-aware rate limiting | ✅ v3 |
+| Control endpoint hardening (proxy-header refusal, optional token) | ✅ v3 |
 
 ---
 
@@ -230,6 +238,68 @@ path       = "/api"
 proxy_pass = "http://127.0.0.1:3000"
 ```
 
+### Realtime: WebSockets and RealWeb
+
+WebSocket upgrades are proxied to your app on any `proxy_pass` / `app` route.
+For realtime without writing socket code, enable FlashLin's built-in hub,
+RealWeb: browsers connect to FlashLin, your app signs a token per user and
+publishes with one HTTP call.
+
+```toml
+[realweb]
+enabled         = true
+secret          = "…32+ random characters, shared with your app…"
+public_channels = ["news/*"]
+```
+
+```html
+<script src="/realweb/client.js"></script>
+<script>
+  const rw = new RealWeb("/realweb", { token: () => fetch("/api/token").then(r => r.text()) });
+  rw.subscribe("chat/lobby", (data, meta) => console.log(meta.from, data));
+  rw.publish("chat/lobby", { text: "hi" });
+</script>
+```
+
+```bash
+curl -X POST http://127.0.0.1:8080/flashlin/realweb/publish -d '{"ch":"news/today","data":"hello"}'
+```
+
+Signed expiring tokens, Origin checks, channel permissions, resume after
+reconnect, acknowledged publishes, presence, heartbeats and slow-client limits
+are built in. Guide and wire protocol: [docs/REALWEB.md](docs/REALWEB.md);
+demo: `flashlin examples/realweb.toml`.
+
+### Node.js and Python apps
+
+FlashLin can run the backend itself: it starts the app, passes it `$PORT`,
+restarts it if it crashes, and proxies a route to it.
+
+```toml
+[[apps]]
+name         = "api"
+runtime      = "node"            # or "python"; or command = "gunicorn", args = [...]
+script       = "server.js"
+cwd          = "/srv/api"
+port         = 3000
+instances    = 2                 # ports 3000 and 3001, load-balanced
+health_check = "/health"
+user         = "www-data"        # required when FlashLin runs as root
+
+[[routes]]
+path = "/api"
+app  = "api"
+```
+
+```bash
+flashlin apps                    # state, pid, port, restarts, health of every instance
+flashlin apps restart api        # graceful restart
+```
+
+Full guide with Express, FastAPI/uvicorn, Django/gunicorn and per-domain
+examples: [docs/APPS.md](docs/APPS.md). Try it with
+`flashlin examples/apps.toml`.
+
 ### Virtual hosts (multiple domains)
 
 ```toml
@@ -335,6 +405,9 @@ WorkingDirectory=/var/www
 ExecStart=/usr/local/bin/flashlin /etc/flashlin/server.toml
 Restart=always
 RestartSec=5
+# Let FlashLin drain connections and stop its [[apps]] in order.
+KillMode=mixed
+TimeoutStopSec=60
 
 [Install]
 WantedBy=multi-user.target
@@ -352,13 +425,17 @@ generates), `flashlin` itself doubles as a control command — run
 sudo flashlin start | stop | restart   # wraps systemctl <action> flashlin
 flashlin status                        # wraps systemctl status flashlin
 flashlin purge cache [config]          # clears the running server's in-memory cache
+flashlin apps [config]                 # status of supervised [[apps]]
+flashlin apps restart <name> [config]  # gracefully restart one app
 sudo flashlin remove                   # stops the service, removes binary + unit
 ```
 
-`purge cache` is the one that isn't just a `systemctl` wrapper: the cache it
-clears lives in the running server's own memory, so it works by sending a
-loopback-only HTTP request to that process instead of touching anything on
-disk. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md#operating-the-server)
+`purge cache` and `apps` aren't `systemctl` wrappers: they act on the running
+server's own memory, so they send a loopback-only HTTP request to that process.
+Those control requests are refused if they carry proxy headers
+(`X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `Via`). Set
+`server.control_token` to also require a bearer token; the CLI reads it from
+the same config file. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md#operating-the-server)
 for details, and [production/README.md](production/README.md) if you're
 using the `production/` deployment package.
 
@@ -415,6 +492,7 @@ ab  -n 50000  -c 100 http://localhost/
 flashlin/
 ├── src/
 │   ├── main.rs              # Entry point, config loading, banner
+│   ├── apps/                # [[apps]] supervisor: spawn, restart, health checks, logs
 │   ├── server/              # TCP listener, worker pool, graceful shutdown
 │   ├── http/                # Request parsing, response helpers, router
 │   ├── config/              # TOML parser + validator
@@ -422,6 +500,7 @@ flashlin/
 │   ├── static_files/        # File serving, ETag, cache headers, path security
 │   ├── php/                 # PHP-FPM + FastCGI protocol implementation
 │   ├── proxy/               # Reverse proxy + upstream management
+│   ├── realweb/             # RealWeb realtime hub, tokens, sessions, JS client
 │   ├── tls/                 # rustls config + certificate loader
 │   ├── security/            # Rate limiter, IP ACL, security headers, sensitive-file list
 │   ├── middleware/          # Compression (gzip/brotli), request-ID, access logging
@@ -433,6 +512,7 @@ flashlin/
 │   └── tests/               # Integration tests (security, config, routing)
 ├── public/                  # Default web root (welcome page + PHP test)
 ├── domains/                 # Example virtual host configs
+├── examples/                # Example configs, incl. apps.toml + sample Node/Python apps
 ├── server.toml              # Full configuration reference
 ├── sample.toml              # Minimal sample config
 ├── dockerflashlin/          # Docker + docker-compose setup
@@ -441,10 +521,13 @@ flashlin/
 
 ---
 
-## v2.0 roadmap
+## Roadmap
 
 | Milestone | Status |
 |---|---|
+| **v3.1 realtime** | Delivered: RealWeb hub (tokens, Origin checks, channel permissions, resume, acks, presence, limits, HTTP publish, JS client). Pending: multi-server clustering, durable history, load testing at scale |
+| **v3.0 apps** | Delivered: supervised Node.js/Python/command apps, crash backoff, HTTP health checks, multi-instance balancing, `flashlin apps`. Pending: zero-downtime rolling restarts, readiness-gated routing, Windows job-object cleanup |
+| **v3.0 security** | Delivered: IPv4-mapped allow/deny fix, IPv6 /64 rate limiting, per-client connection limit, control-endpoint proxy-header refusal and token |
 | **v2.0 core** | Delivered: per-host runtime state, metrics endpoint, static mounts, directory ACLs/error pages, enforced worker and header-read settings |
 | **v2.0 proxy** | Delivered: streamed responses, verified HTTPS upstreams, connection pools, round-robin balancing, passive failover, WebSockets. Pending: fully streamed uploads, active health probes |
 | **v2.0 operations** | Delivered: hot reload. Pending: OpenTelemetry, cache purge/revalidation, log rotation |

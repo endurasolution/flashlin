@@ -20,6 +20,9 @@ mod tests {
                 domains_dir: None,
                 direct_static_io: false,
                 sendfile: false,
+                max_connections_per_ip: 0,
+                control_token: None,
+                directory_listing_css: None,
             },
             http3: None,
             tls: None,
@@ -31,6 +34,9 @@ mod tests {
             routes: Some(routes),
             static_dirs: None,
             virtual_hosts: vec![],
+            vhost_index: Default::default(),
+            apps: vec![],
+            realweb: None,
             state: Default::default(),
         })
     }
@@ -49,6 +55,7 @@ mod tests {
                 cache_control: None,
                 methods: None,
                 directory_listing: false,
+                app: None,
             },
             RouteConfig {
                 path: "/".into(),
@@ -61,6 +68,7 @@ mod tests {
                 cache_control: None,
                 methods: None,
                 directory_listing: false,
+                app: None,
             },
         ]);
 
@@ -91,6 +99,7 @@ mod tests {
             cache_control: None,
             methods: None,
             directory_listing: false,
+            app: None,
         }]);
 
         let path = "/anything/here";

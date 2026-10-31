@@ -109,7 +109,7 @@ pub async fn accept_loop(
                     let _ = incoming.retry();
                     continue;
                 }
-                let Some(slot) = limiter.try_acquire() else { incoming.refuse(); continue; };
+                let Ok(slot) = limiter.try_acquire(incoming.remote_address().ip()) else { incoming.refuse(); continue; };
                 let live = live.clone();
                 let shutdown = trigger.subscribe();
                 tokio::spawn(async move {
